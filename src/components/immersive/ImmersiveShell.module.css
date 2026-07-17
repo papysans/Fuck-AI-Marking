@@ -1,0 +1,256 @@
+.root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* Background layer — full-viewport 3D scene. */
+.sceneLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+/* Floating glass overlay. The layer itself ignores pointer events so the scene
+   stays interactive; individual cards re-enable them. */
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) 1fr;
+  grid-template-rows: auto 1fr auto;
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+}
+
+/* Shared glass card. */
+.card {
+  pointer-events: auto;
+  background: rgba(18, 19, 28, 0.6);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  color: var(--color-foreground);
+}
+
+/* ① Title card — top-left. */
+.titleCard {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+  padding: var(--space-md) var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.title {
+  font-family: var(--font-head);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-foreground);
+}
+
+.roundBadge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
+.titleActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-head);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-foreground);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color 180ms ease, color 180ms ease;
+}
+
+.pill:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.teamLine {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+/* ② Input card — left column, below title. */
+.inputCard {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: start;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-md) var(--space-lg) var(--space-lg);
+  gap: var(--space-md);
+  min-height: 0;
+}
+
+.collapseToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  font-family: var(--font-head);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--color-foreground);
+  background: transparent;
+  border: none;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.inputScroll {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.actionRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.primaryBtn {
+  font-family: var(--font-head);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+  border: none;
+  border-radius: var(--radius);
+  padding: 10px 22px;
+  cursor: pointer;
+  transition: transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
+  box-shadow: var(--shadow-md);
+}
+
+.primaryBtn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.primaryBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ghostBtn {
+  font-family: var(--font-body);
+  font-weight: 600;
+  color: var(--color-foreground);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 9px 16px;
+  cursor: pointer;
+  transition: border-color 180ms ease, color 180ms ease;
+}
+
+.ghostBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.hint {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.error {
+  margin: 0;
+  color: var(--color-secondary);
+  font-size: 13.5px;
+}
+
+/* ③ Result CTA — bottom-right. */
+.resultCta {
+  grid-column: 2;
+  grid-row: 3;
+  justify-self: end;
+  align-self: end;
+  pointer-events: none;
+}
+
+.resultBtn {
+  pointer-events: auto;
+  font-family: var(--font-head);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--color-foreground);
+  background: rgba(18, 19, 28, 0.6);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  padding: 12px 24px;
+  cursor: pointer;
+  box-shadow: var(--shadow-lg);
+  transition: transform 180ms ease, border-color 180ms ease;
+}
+
+.resultBtn:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+@media (max-width: 720px) {
+  .overlay {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+  }
+  .titleCard,
+  .inputCard {
+    grid-column: 1;
+  }
+  .titleCard {
+    grid-row: 1;
+  }
+  .inputCard {
+    grid-row: 2;
+    max-height: 60vh;
+  }
+  .resultCta {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: stretch;
+  }
+  .resultBtn {
+    width: 100%;
+  }
+}

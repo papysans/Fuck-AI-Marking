@@ -1,0 +1,196 @@
+.root {
+  position: relative;
+  height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+  font-family: Nunito, sans-serif;
+  color: #f5f1e6;
+  background: #12131c;
+}
+
+/* full-page WebGL, sits behind everything */
+.canvasLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
+/* overlay: transparent to pointer events, only cards catch them */
+.uiLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 24px;
+}
+
+.topRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.bottomRow {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.glassCard {
+  pointer-events: auto;
+  isolation: isolate;
+  background: rgba(18, 19, 28, 0.55);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  color: #f5f1e6;
+  padding: 20px 22px;
+}
+
+.titleCard {
+  max-width: 320px;
+}
+
+.eyebrow {
+  font-family: Fredoka, sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #ffc24b;
+  margin: 0 0 6px;
+}
+
+.title {
+  font-family: Fredoka, sans-serif;
+  font-weight: 600;
+  font-size: 26px;
+  line-height: 1.15;
+  margin: 0 0 8px;
+}
+
+.subtitle {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #c9cbdb;
+  margin: 0;
+}
+
+.inputCard {
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cardHeading {
+  font-family: Fredoka, sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  margin: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.label {
+  font-size: 12px;
+  color: #9195ae;
+}
+
+.textarea {
+  resize: none;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.28);
+  color: #f5f1e6;
+  font-family: Nunito, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: #ffc24b;
+  box-shadow: 0 0 0 3px rgba(255, 194, 75, 0.2);
+}
+
+.controls {
+  pointer-events: auto;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.btnPrimary {
+  cursor: pointer;
+  font-family: Fredoka, sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  padding: 12px 22px;
+  border-radius: 12px;
+  border: none;
+  background: #ffc24b;
+  color: #12131c;
+  transition: transform 200ms ease, opacity 200ms ease;
+}
+
+.btnPrimary:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+.btnPrimary:disabled {
+  cursor: default;
+  opacity: 0.5;
+  transform: none;
+}
+
+.count {
+  font-family: Fredoka, sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  min-width: 20px;
+  text-align: center;
+  color: #ffc24b;
+}
+
+.toggle {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #f5f1e6;
+  background: rgba(18, 19, 28, 0.55);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 10px 14px;
+  transition: border-color 200ms ease;
+}
+
+.toggle:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+/* reduced-motion / low-transparency fallback: solid card, no blur */
+@media (prefers-reduced-motion: reduce) {
+  .glassCard,
+  .toggle {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: #1b1d2a;
+  }
+}

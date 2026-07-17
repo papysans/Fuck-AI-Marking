@@ -8,12 +8,12 @@ import { loadAgents } from "@/lib/storage";
 import { useStreamingGrade } from "@/hooks/useStreamingGrade";
 import { defaultAgents } from "@/lib/providers";
 import { ProblemInputs } from "@/components/inputs/ProblemInputs";
-import { Stage, type Performer } from "@/components/stage/Stage";
 import { AgentCard } from "@/components/results/AgentCard";
 import { SummaryPanel } from "@/components/results/SummaryPanel";
 import { KeyPointList } from "@/components/results/KeyPointList";
-import { AgentStatusBar } from "@/components/status/AgentStatusBar";
+import { AgentStatusBar, type StatusPerformer } from "@/components/status/AgentStatusBar";
 import { HistoryDrawer } from "@/components/history/HistoryDrawer";
+import { ImmersiveShell } from "@/components/immersive/ImmersiveShell";
 import type { CharacterStatus } from "@/components/stage/SpriteCharacter";
 import { buildMarkdownReport, reportFileName, type ReportInput } from "@/lib/report";
 import {
@@ -25,7 +25,7 @@ import {
 } from "@/lib/history";
 import styles from "./page.module.css";
 
-type ViewMode = "basic" | "fancy";
+type ViewMode = "basic" | "immersive";
 
 const MODE_KEY = "agb.mode.v1";
 
@@ -34,7 +34,6 @@ export default function Home() {
   const [question, setQuestion] = useState("");
   const [notes, setNotes] = useState("");
   const [answer, setAnswer] = useState("");
-  const [focusMode, setFocusMode] = useState(false);
   const [mode, setMode] = useState<ViewMode>("basic");
 
   // History + report state.
@@ -55,9 +54,11 @@ export default function Home() {
   }, []);
 
   // Hydrate view mode from localStorage after mount (SSR-safe).
+  // Migration: the old "fancy" value maps to the new "immersive" mode.
   useEffect(() => {
     const saved = window.localStorage.getItem(MODE_KEY);
-    if (saved === "basic" || saved === "fancy") setMode(saved);
+    if (saved === "immersive" || saved === "fancy") setMode("immersive");
+    else if (saved === "basic") setMode("basic");
   }, []);
 
   useEffect(() => {
@@ -240,7 +241,7 @@ export default function Home() {
   };
 
   // Build the stage lineup. Before a run, show the enabled agents idling.
-  const performers: Performer[] = useMemo(() => {
+  const performers: StatusPerformer[] = useMemo(() => {
     return enabledAgents.map((a) => {
       const runView = state.runs[a.id];
       const status: CharacterStatus = runView?.status ?? "pending";
@@ -254,6 +255,8 @@ export default function Home() {
     });
   }, [enabledAgents, state.runs, started]);
 
+  const toggleMode = () => setMode((m) => (m === "basic" ? "immersive" : "basic"));
+
   const primaryLabel =
     state.phase === "extracting"
       ? "抽取要点中…"
@@ -265,8 +268,43 @@ export default function Home() {
             ? "带上下文重新评分"
             : "开始评分";
 
+  if (mode === "immersive") {
+    return (
+      <div>
+        <ImmersiveShell
+          state={state}
+          enabledAgents={enabledAgents}
+          question={question}
+          notes={notes}
+          answer={answer}
+          onInputChange={onInputChange}
+          busy={busy}
+          inputsReady={Boolean(inputsReady)}
+          started={started}
+          primaryLabel={primaryLabel}
+          onPrimary={handlePrimary}
+          onReset={handleReset}
+          onToggleMode={toggleMode}
+          onOpenHistory={openHistory}
+          onExport={() => void exportReport(liveReportInput())}
+          copied={copied}
+        />
+        <HistoryDrawer
+          open={historyOpen}
+          entries={history}
+          activeId={viewing?.id}
+          onClose={() => setHistoryOpen(false)}
+          onLoad={loadEntry}
+          onDelete={deleteEntry}
+          onClear={clearAll}
+          onNew={newBlank}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className={focusMode ? "focus-mode" : ""}>
+    <div>
       <main className={styles.main}>
         <header className={styles.header}>
           <div className={styles.titleRow}>
@@ -277,12 +315,12 @@ export default function Home() {
             <button
               type="button"
               className={styles.modeToggle}
-              onClick={() => setMode((m) => (m === "basic" ? "fancy" : "basic"))}
-              aria-pressed={mode === "fancy"}
-              title="切换极简版 / 炫技版"
+              onClick={toggleMode}
+              aria-pressed={false}
+              title="切换 简洁 / 沉浸"
             >
-              {mode === "basic" ? <BoltIcon /> : <SparkIcon />}
-              {mode === "basic" ? "极简版" : "炫技版"}
+              <SparkIcon />
+              沉浸
             </button>
             <button
               type="button"
@@ -327,14 +365,10 @@ export default function Home() {
           </div>
         </header>
 
-        {mode === "fancy" ? (
-          <Stage performers={performers} extracting={state.phase === "extracting"} />
-        ) : (
-          <AgentStatusBar
-            performers={performers}
-            extracting={state.phase === "extracting"}
-          />
-        )}
+        <AgentStatusBar
+          performers={performers}
+          extracting={state.phase === "extracting"}
+        />
 
         <section className={styles.workbench}>
           <div className={styles.inputCard}>
@@ -359,16 +393,6 @@ export default function Home() {
             {(started || viewing) && !busy && (
               <button type="button" className={styles.ghostBtn} onClick={handleReset}>
                 重置
-              </button>
-            )}
-            {mode === "fancy" && (
-              <button
-                type="button"
-                className={styles.ghostBtn}
-                onClick={() => setFocusMode((v) => !v)}
-                aria-pressed={focusMode}
-              >
-                {focusMode ? "演出模式" : "专注模式"}
               </button>
             )}
             {enabledAgents.length === 0 && (
@@ -500,20 +524,6 @@ function GearIcon() {
       <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
       <path
         d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function BoltIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"
         stroke="currentColor"
         strokeWidth="2"
         strokeLinecap="round"
