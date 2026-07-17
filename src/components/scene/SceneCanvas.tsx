@@ -1,28 +1,44 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { PresentationControls, Html } from "@react-three/drei";
+import { OrbitControls, Html } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
 import { SceneEnvironment } from "./SceneEnvironment";
 import {
-  RobotCircle,
+  CharacterCircle,
   CameraRig,
   ringRadius,
   cameraSetup,
   SCENE_FOV,
-} from "./RobotCircle";
+  SCENE_POLAR_MIN,
+  SCENE_POLAR_MAX,
+} from "./CharacterCircle";
 import type { ScenePerformer } from "./ImmersiveScene";
 
 /**
  * The single full-page r3f `<Canvas>` (NEVER `<View>` — proven blank in this
  * repo). Loaded client-only by `ImmersiveScene` via next/dynamic ssr:false.
  *
- * Layering: a fixed `CameraRig` frames the ring from outside; the ring itself
- * self-rotates (inside `RobotCircle`); `PresentationControls` wraps the ring on
- * an outer group so pointer drag only tilts and never fights the spin. Bloom is
- * toggleable and force-off under reduced-motion.
+ * Layering: `CameraRig` POSES the orbit camera once (and re-eases it when the
+ * jury size changes); `OrbitControls` owns it from then on. The ring content is
+ * static — see the note in `CharacterCircle` — so the camera is the scene's one
+ * and only source of rotation. Bloom is toggleable and force-off under
+ * reduced-motion.
  */
+
+/** Full ring revolution in seconds, matching the old carousel spin. */
+const AUTO_ROTATE_PERIOD_S = 50;
+/**
+ * three-stdlib advances autoRotate by `2π/60/60 * autoRotateSpeed` per
+ * `update()` and drei calls `update()` once per frame, so speed is calibrated
+ * against a 60fps frame — `speed = 60 / period`. (The stdlib build ignores
+ * deltaTime, so a 120Hz display orbits ~2x faster. Cosmetic, and the price of
+ * using the controller's own autoRotate instead of a second rotation source.)
+ */
+const AUTO_ROTATE_SPEED = 60 / AUTO_ROTATE_PERIOD_S;
+/** Museum standard: hands off for this long → the exhibit resumes turning. */
+const IDLE_RESUME_MS = 3500;
 export default function SceneCanvas({
   performers,
   extracting,
@@ -37,8 +53,33 @@ export default function SceneCanvas({
   const radius = ringRadius(performers.length);
   const rig = cameraSetup(radius, performers.length);
 
+  // Auto-rotate pauses the moment the user grabs the scene and resumes only
+  // after they've been still for IDLE_RESUME_MS. OrbitControls already gates
+  // autoRotate off mid-drag (state !== NONE), so this timer is what buys the
+  // "let go and read for a second without the ring walking away" grace period.
+  const [autoSpin, setAutoSpin] = useState(true);
+  const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleStart = useCallback(() => {
+    if (resumeTimer.current) clearTimeout(resumeTimer.current);
+    resumeTimer.current = null;
+    setAutoSpin(false);
+  }, []);
+
+  const handleEnd = useCallback(() => {
+    if (resumeTimer.current) clearTimeout(resumeTimer.current);
+    resumeTimer.current = setTimeout(() => setAutoSpin(true), IDLE_RESUME_MS);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (resumeTimer.current) clearTimeout(resumeTimer.current);
+    },
+    [],
+  );
+
   const ring = (
-    <RobotCircle performers={performers} reducedMotion={reducedMotion} />
+    <CharacterCircle performers={performers} reducedMotion={reducedMotion} />
   );
 
   return (
@@ -60,29 +101,42 @@ export default function SceneCanvas({
       />
 
       <SceneEnvironment />
+
+      {/* Mounted BEFORE CameraRig so `makeDefault` has published `controls` to
+          the r3f store by the time the rig's effect looks for it.
+
+          Why an orbit camera and not PresentationControls: PC rotates the
+          CONTENT ("exhibit in your hand") and fences azimuth to ±0.6rad, which
+          is nonsense for a ring you're meant to walk around — two drags and you
+          hit a wall you can't see. Orbiting the camera is the museum semantic:
+          unlimited azimuth (every reviewer reachable), damped inertia on
+          release, and one authority over the view. */}
+      <OrbitControls
+        makeDefault
+        // No pan/zoom on purpose. `rig.dist` is a compile-time constant that
+        // feeds the fog band and the bubbles' `distanceFactor`; zoom would make
+        // the real eye→ring distance drift away from it and silently break both.
+        // Adding zoom later means deriving those from the live camera distance.
+        enablePan={false}
+        enableZoom={false}
+        // Damping IS the inertia: release the drag and the camera coasts to a
+        // stop instead of dying on the spot. drei's OrbitControls runs
+        // `controls.update()` in its own useFrame (priority -1) every frame,
+        // which is what damping requires — verified in drei 10.7.7's source.
+        enableDamping={!reducedMotion}
+        dampingFactor={0.075}
+        // Azimuth deliberately unbounded: the whole point is to orbit the ring.
+        minPolarAngle={SCENE_POLAR_MIN}
+        maxPolarAngle={SCENE_POLAR_MAX}
+        autoRotate={autoSpin && !reducedMotion}
+        autoRotateSpeed={AUTO_ROTATE_SPEED}
+        onStart={handleStart}
+        onEnd={handleEnd}
+      />
       <CameraRig radius={radius} count={performers.length} />
 
       <Suspense fallback={null}>
-        {reducedMotion ? (
-          ring
-        ) : (
-          /* Bug 2: NO `snap`. drei does
-             `animation.rotation = snap && !down ? rInitial : [y, x, 0]`, i.e.
-             `snap` springs the ring back to its initial rotation the instant the
-             pointer lifts. Without it the last dragged angle is kept as the
-             damped target, so the view stays exactly where the user left it.
-             `damping` still gives the eased feel, and polar/azimuth still fence
-             the ring in. The slow spin lives on an INNER group, so it keeps
-             composing on top of the user's persistent offset. */
-          <PresentationControls
-            global
-            polar={[-0.15, 0.35]}
-            azimuth={[-0.5, 0.5]}
-            damping={0.25}
-          >
-            {ring}
-          </PresentationControls>
-        )}
+        {ring}
 
         {extracting && (
           <Html center position={[0, 0.4, 0]} style={{ pointerEvents: "none" }}>

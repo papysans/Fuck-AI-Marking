@@ -106,11 +106,11 @@ export default function DemoPage() {
     });
   }, [performers, clearTimers]);
 
-  const addRobot = () =>
+  const addCharacter = () =>
     setPerformers((prev) =>
       prev.length >= 6 ? prev : [...prev, makePerformer(prev.length)],
     );
-  const removeRobot = () =>
+  const removeCharacter = () =>
     setPerformers((prev) => (prev.length <= 1 ? prev : prev.slice(0, -1)));
 
   return (
@@ -125,8 +125,8 @@ export default function DemoPage() {
             <p className={styles.eyebrow}>Immersive Test Bench</p>
             <h1 className={styles.title}>评分录音棚 · 测试台</h1>
             <p className={styles.subtitle}>
-              数据驱动的 &lt;ImmersiveScene&gt; 预览：机器人围圈面对面「争论」、缓慢转台、
-              头顶对话框流式点评。下方按钮模拟一次评分，并可增删机器人验证围圈自适应。
+              数据驱动的 &lt;ImmersiveScene&gt; 预览：评审角色围圈面对面「争论」、缓慢转台、
+              头顶对话框流式点评。下方按钮模拟一次评分，并可增删角色验证围圈自适应。
             </p>
           </section>
         </div>
@@ -141,12 +141,12 @@ export default function DemoPage() {
             >
               Bloom：{bloom ? "开" : "关"}
             </button>
-            <button type="button" className={styles.toggle} onClick={removeRobot}>
-              − 机器人
+            <button type="button" className={styles.toggle} onClick={removeCharacter}>
+              − 角色
             </button>
             <span className={styles.count}>{performers.length}</span>
-            <button type="button" className={styles.toggle} onClick={addRobot}>
-              + 机器人
+            <button type="button" className={styles.toggle} onClick={addCharacter}>
+              + 角色
             </button>
             <button type="button" className={styles.toggle} onClick={reset}>
               重置

@@ -14,7 +14,7 @@ import { KeyPointList } from "@/components/results/KeyPointList";
 import { AgentStatusBar, type StatusPerformer } from "@/components/status/AgentStatusBar";
 import { HistoryDrawer } from "@/components/history/HistoryDrawer";
 import { ImmersiveShell } from "@/components/immersive/ImmersiveShell";
-import type { CharacterStatus } from "@/components/stage/SpriteCharacter";
+import type { RunStatus } from "@/hooks/useStreamingGrade";
 import { buildMarkdownReport, reportFileName, type ReportInput } from "@/lib/report";
 import {
   appendHistory,
@@ -244,7 +244,7 @@ export default function Home() {
   const performers: StatusPerformer[] = useMemo(() => {
     return enabledAgents.map((a) => {
       const runView = state.runs[a.id];
-      const status: CharacterStatus = runView?.status ?? "pending";
+      const status: RunStatus = runView?.status ?? "pending";
       return {
         id: a.id,
         name: a.name,

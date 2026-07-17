@@ -5,41 +5,81 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, Html } from "@react-three/drei";
 import type { ScenePerformer } from "./ImmersiveScene";
 import { accentHex } from "./ImmersiveScene";
+import {
+  characterFor,
+  planFor,
+  prepareCharacter,
+  seedOf,
+  type AnimationPlan,
+  type MeasureBasis,
+} from "./characters";
 
 /**
- * One evaluator robot. RobotExpressive is a SkinnedMesh, so each robot MUST
- * clone via SkeletonUtils (sharing the raw scene corrupts the skeleton). Every
- * clone owns its OWN `THREE.AnimationMixer` (see below — drei's `useAnimations`
- * is NOT safe here), its "Main" material tinted to the reviewer's voice color,
- * an animation state machine driven by the performer's status/score, and a drei
- * `<Html>` chat bubble above its head that streams the reviewer's `commentary`.
+ * One evaluator character (KayKit CC0 cast — Knight / Mage / Barbarian /
+ * Skeleton Warrior, picked deterministically per performer id). Each is a
+ * SkinnedMesh, so every instance MUST clone via SkeletonUtils (sharing the raw
+ * scene corrupts the skeleton). Every clone owns its OWN `THREE.AnimationMixer`
+ * (see below — drei's `useAnimations` is NOT safe here), an animation state
+ * machine driven by the performer's status/score, and a drei `<Html>` chat
+ * bubble above its head that streams the reviewer's `commentary`.
  *
  * Deterministic per-id variation (never random, never positional) so re-renders
  * and neighbour add/remove are stable.
  */
 
-// pending → idle-ish waiting poses (chosen by stable seed)
-const PENDING_POSES = ["Idle", "Standing", "Wave"] as const;
-// streaming → "arguing": loop through animated gestures, cycling over time
-const STREAM_CYCLE = ["Dance", "Wave", "Yes", "No", "Punch"] as const;
+/**
+ * Common BODY height for every character, in world units (see MEASURE_BASIS —
+ * this is the person, hats excluded and free to stick out above it).
+ *
+ * Was 4.5 under the old `"silhouette"` basis, chosen to match the old
+ * RobotExpressive's ~4.7-unit render (bbox 5.18 × its 0.9 scale) that the camera
+ * rig, fog and bubble offsets were tuned around. Switching the basis changes what
+ * this number MEASURES, so it had to be retuned or the whole cast would inflate:
+ * at 4.5-per-body the mean silhouette becomes 5.31 (+18% vs the old 4.5) and the
+ * Mage alone reaches 6.13 (+36%), blowing the framing.
+ *
+ * 4.0 is the value where the new basis lands back on the old framing. Measured
+ * (bind pose, all four GLBs) — three independent checks agree:
+ *
+ *                       old silhouette@4.5     body@4.5      body@4.0
+ *   mean silhouette        4.50 (robot ~4.7)     5.31          4.72  ← ≈ robot
+ *   mean head top          2.85                  3.50          3.00  ← ≈ old
+ *   mean body height       3.85                  4.50          4.00  ← ≈ old
+ *
+ * The four KayKit models are authored at ~2.2-2.3 units of body, so they scale
+ * UP ~1.73-1.85×; the exact factor is derived per model from a runtime
+ * measurement, never guessed.
+ */
+const TARGET_HEIGHT = 4.0;
+
+/** Floor plane — matches `<ContactShadows position={[0,-1,0]}>`. */
+const GROUND_Y = -1;
 
 /**
- * FNV-1a over performer.id → a stable per-robot variation seed.
+ * How "same height" is measured. `"body"`: the PEOPLE match and headgear stands
+ * proud of them, which is how this cast is drawn to read.
  *
- * Deliberately NOT the array index: indices shift when a reviewer is deleted
- * from the middle of the list, which would re-run every surviving robot's
- * animation effect and re-roll its pose/timeScale mid-performance.
+ * `"silhouette"` (the old value) squeezed each character's TOTAL outline into
+ * TARGET_HEIGHT, so the Mage's ~1.6-unit hat ate his budget: measured, his body
+ * came out 3.30 vs the Knight's 4.22 — 21.8% shorter, a dwarf under a big hat.
+ * `"body"` measures skinned meshes only, which on this cast is exactly the
+ * person: every body part (Body, Head, ArmLeft/Right, LegLeft/Right, plus the
+ * skeleton's Jaw, Eyes and Cloak) is a SkinnedMesh, while every headpiece
+ * (`Knight_Helmet`,
+ * `Mage_Hat`, `Barbarian_Hat`, `Skeleton_Warrior_Helmet`) and rigid cape is a
+ * plain Mesh bolted to a bone. Verified against all four GLBs, not assumed.
+ *
+ * Grounding is unaffected: legs are the lowest part of every model (feet at
+ * local y=0; the lowest rigid mesh is a cape at y≥0.055), so the body box's
+ * `min.y` IS the full model's `min.y` and the measured feet still land exactly
+ * on GROUND_Y. Bonus: since each model's body top IS its head top, all four
+ * heads now line up at exactly GROUND_Y + TARGET_HEIGHT, so the fixed-height
+ * chat bubbles sit consistently over every character instead of ranging 2.30
+ * (Mage) to 3.22 (Knight) as they did under `"silhouette"`.
  */
-function seedOf(id: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < id.length; i++) {
-    h ^= id.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
+const MEASURE_BASIS: MeasureBasis = "body";
 
-export function Robot({
+export function Character({
   performer,
   count,
   viewHeight,
@@ -47,31 +87,37 @@ export function Robot({
 }: {
   performer: ScenePerformer;
   count: number;
-  /** Visible world height at the ring, from the camera rig (see RobotCircle). */
+  /** Visible world height at the ring, from the camera rig (see CharacterCircle). */
   viewHeight: number;
   reducedMotion: boolean;
 }) {
-  const { scene, animations } = useGLTF("/models/RobotExpressive.glb");
   const color = accentHex(performer.accentIndex);
   const seed = useMemo(() => seedOf(performer.id), [performer.id]);
+  // Stable body for this reviewer. Only the chosen GLB is fetched (useGLTF
+  // caches, so reviewers sharing a body share one download).
+  const def = useMemo(() => characterFor(performer.id), [performer.id]);
+  const { scene, animations } = useGLTF(def.url);
 
-  // Independent skeleton per robot.
+  // Independent skeleton per character.
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
 
-  // Tint the body ("Main") material + enable shadows.
-  useMemo(() => {
-    clone.traverse((obj) => {
-      if (!(obj instanceof THREE.Mesh)) return;
-      obj.castShadow = true;
-      obj.receiveShadow = true;
-      const mat = obj.material;
-      if (mat instanceof THREE.MeshStandardMaterial && mat.name === "Main") {
-        const tinted = mat.clone();
-        tinted.color = new THREE.Color(color);
-        obj.material = tinted;
-      }
-    });
-  }, [clone, color]);
+  // Hide duplicate equipment, tint the Glow material, and measure the model so
+  // all four bodies stand the same height with their feet on the floor.
+  const fit = useMemo(
+    () =>
+      prepareCharacter(clone, {
+        def,
+        accent: color,
+        targetHeight: TARGET_HEIGHT,
+        groundY: GROUND_Y,
+        basis: MEASURE_BASIS,
+      }),
+    [clone, def, color],
+  );
+
+  // Which clips this particular model actually has (Skeleton_Warrior has 95,
+  // the others 76), with all static `*_Pose` / `T-Pose` entries filtered out.
+  const plan: AnimationPlan = useMemo(() => planFor(animations), [animations]);
 
   /**
    * ── Bug 3 core ──────────────────────────────────────────────────────────
@@ -80,8 +126,8 @@ export function Robot({
    * `groupRef.current` is null. `play()` swallowed that (`if (!next) return`), so
    * any transition evaluated before the ref attached was dropped FOREVER — a
    * permanently dead state machine, no retry. Binding to `clone` (never null,
-   * unique per robot) kills that, and owning the mixer means nothing external
-   * ever stops our actions.
+   * unique per character) kills that, and owning the mixer means nothing
+   * external ever stops our actions.
    *
    * ── THE IRON RULE: mixer, actions and bindings are ONE lifetime ──────────
    * The mixer and its actions are built together in the effect below and dropped
@@ -91,7 +137,7 @@ export function Robot({
    * called `mixer.uncacheRoot(clone)` on cleanup, betting that three's
    * `_activateAction` "this action has been forgotten by the cache -> rebind"
    * path made replaying a memoized action safe. That bet is FALSE and it is why
-   * adding a robot mid-stream threw `Cannot set properties of undefined
+   * adding a character mid-stream threw `Cannot set properties of undefined
    * (setting '_cacheIndex')`:
    *
    *   - `useMemo` is NOT invalidated by an effect cleanup, so a StrictMode
@@ -118,7 +164,7 @@ export function Robot({
   const rig = useRef<Rig | null>(null);
   const active = useRef<THREE.AnimationAction | null>(null);
   // Bumped on every rig (re)build so the status effect below re-asserts the
-  // desired pose onto the FRESH actions instead of leaving the robot frozen.
+  // desired pose onto the FRESH actions instead of leaving the character frozen.
   const [rigId, setRigId] = useState(0);
 
   useEffect(() => {
@@ -146,10 +192,13 @@ export function Robot({
   // Crossfade helper (0.3s). Under reduced-motion: snap to a static pose frame.
   const play = useCallback(
     (
-      name: string,
+      name: string | null,
       opts?: { once?: boolean; timeScale?: number; phase?: number },
     ) => {
-      // Always resolved from the LIVE rig — never a captured action object.
+      // `name` is null when a model has no clip for this state — never let that
+      // reach the mixer. Always resolved from the LIVE rig, never a captured
+      // action object.
+      if (!name) return;
       const next = rig.current?.actions[name];
       if (!next || active.current === next) return;
       const prev = active.current;
@@ -181,60 +230,63 @@ export function Robot({
   const streamTimer = useRef(0);
   const streamStep = useRef(0);
 
-  // Stable per-robot variation (phase offset / timeScale / gesture order).
+  // Stable per-character variation (phase offset / timeScale / gesture order).
   const timeScale = 0.9 + (seed % 3) * 0.1;
 
   useEffect(() => {
     statusRef.current = performer.status;
     switch (performer.status) {
       case "pending":
-        play(PENDING_POSES[seed % PENDING_POSES.length], {
+        play(plan.pending, {
           phase: (seed % 8) * 0.25, // stagger idle phase
         });
         break;
       case "streaming":
         streamTimer.current = 0;
         streamStep.current = 0;
-        play(STREAM_CYCLE[seed % STREAM_CYCLE.length], { timeScale });
+        if (plan.stream.length > 0) {
+          play(plan.stream[seed % plan.stream.length], { timeScale });
+        }
         break;
       case "done":
         play(
-          performer.score != null && performer.score >= 60
-            ? "ThumbsUp"
-            : "Death",
+          performer.score != null && performer.score >= 60 ? plan.win : plan.lose,
           { once: true },
         );
         break;
       case "error":
-        play("No", { once: true });
+        play(plan.error, { once: true });
         break;
     }
     // `rigId` is in deps so that whenever the rig is rebuilt (clone change, or a
     // StrictMode remount) the desired pose is re-asserted onto the FRESH actions
     // rather than lost. `active` is nulled on every rebuild, so the identity
     // early-return in `play()` can never swallow that re-assert.
-  }, [performer.status, performer.score, seed, timeScale, play, rigId]);
+  }, [performer.status, performer.score, seed, timeScale, play, rigId, plan]);
 
-  // Streaming = "arguing": swap gestures every 2-4s, staggered per robot.
+  // Streaming = "arguing": swap gestures every 2-4s, staggered per character.
   useFrame((_, dt) => {
     if (statusRef.current !== "streaming" || reducedMotion) return;
+    if (plan.stream.length === 0) return;
     streamTimer.current += dt;
     const interval = 2 + (seed % 3); // 2s, 3s, 4s
     if (streamTimer.current >= interval) {
       streamTimer.current = 0;
       streamStep.current += 1;
-      const name = STREAM_CYCLE[(streamStep.current + seed) % STREAM_CYCLE.length];
+      const name = plan.stream[(streamStep.current + seed) % plan.stream.length];
       play(name, { timeScale });
     }
   });
 
   return (
     <group>
-      {/* feet dropped onto the ContactShadows plane at y=-1; scaled around the
-          clone origin (feet), so a slightly smaller robot stays grounded and
-          gains a little more whitespace between neighbours. */}
-      <primitive object={clone} position={[0, -1, 0]} scale={0.9} />
-      <RobotBubble
+      {/* Scale + ground offset are MEASURED per model (see prepareCharacter),
+          so all four bodies read the same height and every pair of feet lands
+          on the ContactShadows plane at y=-1. The models' own +Z is their
+          forward (verified: eyes/jaw sit at +Z, capes at -Z), which is what the
+          ring's `angle + π` yaw already assumes — no extra offset needed. */}
+      <primitive object={clone} position={[0, fit.y, 0]} scale={fit.scale} />
+      <CharacterBubble
         performer={performer}
         color={color}
         count={count}
@@ -253,12 +305,12 @@ export function Robot({
  * Anti-clutter for many reviewers:
  * - Base size + `distanceFactor` shrink as `count` grows (5-6 bubbles never
  *   blow up into each other).
- * - A per-frame "front-ness" test (is this robot on the camera-facing side of
- *   the slowly spinning ring?) fades + shrinks bubbles that have rotated to the
- *   BACK into a small dim badge, so only the front-facing reviewers stay fully
+ * - A per-frame "front-ness" test (is this character on the camera-facing side
+ *   of the slowly spinning ring?) fades + shrinks bubbles that have rotated to
+ *   the BACK into a small dim badge, so only the front-facing reviewers stay
  *   readable and the on-screen text never smears together.
  */
-function RobotBubble({
+function CharacterBubble({
   performer,
   color,
   count,
@@ -285,7 +337,7 @@ function RobotBubble({
     const holder = holderRef.current;
     if (!wrap || !holder) return;
     holder.getWorldPosition(tmp.pos);
-    // Flatten to XZ: robot direction from ring center vs. camera direction.
+    // Flatten to XZ: character direction from ring center vs. camera direction.
     tmp.a.set(tmp.pos.x, 0, tmp.pos.z);
     if (tmp.a.lengthSq() > 1e-4) tmp.a.normalize();
     tmp.b.set(camera.position.x, 0, camera.position.z);
@@ -397,7 +449,7 @@ function RobotBubble({
               {hasText ? commentary : status === "streaming" ? "…" : "—"}
             </div>
           </div>
-          {/* tail pointing down at the robot */}
+          {/* tail pointing down at the character */}
           <div
             style={{
               width: 0,
@@ -432,5 +484,3 @@ function RobotBubble({
     </group>
   );
 }
-
-useGLTF.preload("/models/RobotExpressive.glb");
