@@ -1,0 +1,17 @@
+.eq {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  height: 30px;
+}
+
+.bar {
+  width: 6px;
+  height: 100%;
+  border-radius: 3px;
+  border: 1.5px solid #0c0d14;
+  transform-origin: bottom center;
+  transform: scaleY(0.3);
+  animation: eq-bounce 0.56s steps(2, jump-none) infinite;
+}

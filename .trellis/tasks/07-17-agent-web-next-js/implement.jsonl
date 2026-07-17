@@ -1,0 +1,13 @@
+{"file": ".trellis/tasks/07-17-agent-web-next-js/prd.md", "reason": "需求与技术方案定稿：评分三段式、透明代理、多轮、Incredibox 前端方向"}
+{"file": ".trellis/tasks/07-17-agent-web-next-js/research/llm-grader-best-practices.md", "reason": "评分内核的 prompt 设计依据：要点抽取、逐点判定带证据、代码算分、ensemble 聚合"}
+{"file": "design-system/ai-grading-beatbox/MASTER.md", "reason": "前端设计系统：舞台风配色、Agent 声部色、字体、动效栈、组件规范"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端规范总览与约定入口"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Next.js 目录结构约定，决定文件落位"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件编写规范（舞台/卡片/配置面板组件）"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Agent 配置、流式状态、多轮上下文的状态管理约定"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "自定义 hook 规范：流式 fetch/SSE 解析 hook"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TS 类型约定：要点/判定/评分结果的类型建模"}
+{"file": ".trellis/spec/backend/index.md", "reason": "后端（API route）规范总览"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "route/服务端代码落位约定"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "代理路由的上游错误/超时/流中断处理约定"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "前端与代理 route 的数据流一致性（schema、SSE 契约）"}

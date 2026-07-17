@@ -1,0 +1,187 @@
+@import url("https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@300;400;500;600;700&display=swap");
+@import "./comic.css";
+
+/* ============================================================
+   Design tokens — Incredibox "Grading Studio" (dark stage)
+   Source of truth: design-system/ai-grading-beatbox/MASTER.md
+   ============================================================ */
+:root {
+  --color-background: #12131c;
+  --color-surface: #1b1d2a;
+  --color-surface-2: #242739;
+  --color-foreground: #f5f1e6;
+  --color-muted: #9195ae;
+  --color-border: rgba(245, 241, 230, 0.1);
+  --color-primary: #ffc24b;
+  --color-on-primary: #12131c;
+  --color-secondary: #ff5c7a;
+  --color-success: #57e0a6;
+  --color-destructive: #ff5c7a;
+
+  --agent-1: #ff5c7a;
+  --agent-2: #ffc24b;
+  --agent-3: #57e0a6;
+  --agent-4: #5ab4ff;
+  --agent-5: #b98bff;
+  --agent-6: #ff8ad1;
+
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+
+  --radius: 14px;
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 12px 34px rgba(0, 0, 0, 0.45);
+
+  --font-head: "Fredoka", system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-body: "Nunito", system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  min-height: 100vh;
+  /* smooth 60fps animated stage backdrop */
+  background-image:
+    radial-gradient(1200px 500px at 50% -10%, rgba(255, 194, 75, 0.12), transparent 60%),
+    radial-gradient(900px 600px at 15% 20%, rgba(90, 180, 255, 0.08), transparent 55%),
+    radial-gradient(900px 600px at 85% 15%, rgba(185, 139, 255, 0.08), transparent 55%);
+  background-attachment: fixed;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-head);
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 0;
+}
+
+button {
+  font-family: var(--font-body);
+  cursor: pointer;
+}
+
+a {
+  color: var(--color-primary);
+}
+
+/* ============================================================
+   Keyframes
+   ============================================================ */
+
+/* Background: high-frame-rate smooth spotlight sweep */
+@keyframes spotlight-drift {
+  0% {
+    transform: translateX(-6%) scale(1.02);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translateX(6%) scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-6%) scale(1.02);
+    opacity: 0.7;
+  }
+}
+
+/* Character: LOW-frame-rate stepped bob — the comic "on 3s" choppiness.
+   steps() snaps between poses instead of interpolating. */
+@keyframes sing-bob {
+  0% {
+    transform: translateY(0) rotate(-2deg);
+  }
+  100% {
+    transform: translateY(-14px) rotate(2deg);
+  }
+}
+
+@keyframes idle-bob {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-4px);
+  }
+}
+
+/* Sprite-sheet playback (future asset-swap path). Assumes a single horizontal
+   strip whose background-size is set so one frame fills the container width. */
+@keyframes sprite-play {
+  from {
+    background-position-x: 0;
+  }
+  to {
+    background-position-x: -100%;
+  }
+}
+
+@keyframes eq-bounce {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes pop-in {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes score-flip {
+  0% {
+    transform: rotateX(90deg) scale(0.8);
+    opacity: 0;
+  }
+  60% {
+    transform: rotateX(-12deg) scale(1.05);
+    opacity: 1;
+  }
+  100% {
+    transform: rotateX(0deg) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Respect reduced-motion: kill all the choreography. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Focus-mode class toggled from the UI also disables stage motion. */
+.focus-mode .stage-motion {
+  animation: none !important;
+}

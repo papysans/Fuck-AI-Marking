@@ -1,0 +1,106 @@
+.main {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--space-xl) var(--space-lg) var(--space-2xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--color-muted);
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 180ms ease;
+}
+
+.back:hover {
+  color: var(--color-primary);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.title {
+  font-family: var(--font-head);
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--color-foreground);
+}
+
+.subtitle {
+  color: var(--color-muted);
+  line-height: 1.6;
+}
+
+.notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin-top: var(--space-sm);
+}
+
+.note {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-lg);
+}
+
+.noteTitle {
+  font-family: var(--font-head);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-bottom: var(--space-sm);
+}
+
+.noteText {
+  color: var(--color-muted);
+  line-height: 1.7;
+  font-size: 14px;
+}
+
+.noteList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding-left: var(--space-md);
+  color: var(--color-muted);
+  line-height: 1.7;
+  font-size: 14px;
+}
+
+.noteList strong,
+.noteText strong {
+  color: var(--color-foreground);
+}
+
+.code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: var(--color-surface-2);
+  border-radius: 6px;
+  padding: 1px 6px;
+  margin: 0 3px;
+  color: var(--color-foreground);
+}
+
+@media (max-width: 640px) {
+  .title {
+    font-size: 26px;
+  }
+  .main {
+    padding: var(--space-lg) var(--space-md);
+  }
+}

@@ -1,0 +1,179 @@
+.card {
+  position: relative;
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  padding: var(--space-md);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--accent);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.name {
+  font-family: var(--font-head);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  flex: 0 0 auto;
+  min-width: 48px;
+  padding: 2px var(--space-sm);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius);
+  font-family: var(--font-head);
+  font-size: 22px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--color-muted);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.muted {
+  color: var(--color-muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+.stream {
+  color: var(--color-foreground);
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  margin: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.stream::-webkit-scrollbar,
+.keyPointScroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.stream::-webkit-scrollbar-track,
+.keyPointScroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.stream::-webkit-scrollbar-thumb,
+.keyPointScroll::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
+}
+
+.stream::-webkit-scrollbar-thumb:hover,
+.keyPointScroll::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted);
+}
+
+.keyPointScroll {
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.error {
+  color: var(--color-secondary);
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.pulseRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: kp-pulse 1s ease-in-out infinite;
+}
+
+.pulseLabel {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.chip {
+  font-size: 12px;
+  color: var(--color-foreground);
+  padding: 2px var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+}
+
+.chipMuted {
+  font-size: 12px;
+  color: var(--color-muted);
+  padding: 2px var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+}
+
+@keyframes kp-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

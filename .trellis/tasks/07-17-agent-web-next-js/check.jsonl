@@ -1,0 +1,9 @@
+{"file": ".trellis/tasks/07-17-agent-web-next-js/prd.md", "reason": "验收基准：Acceptance Criteria 与 Definition of Done 对照检查"}
+{"file": ".trellis/tasks/07-17-agent-web-next-js/research/llm-grader-best-practices.md", "reason": "校验评分实现是否落实反偏差要点（证据先于判定、代码算分、schema 校验重试）"}
+{"file": "design-system/ai-grading-beatbox/MASTER.md", "reason": "校验 UI 是否符合设计系统与 Pre-Delivery Checklist（对比度、reduced-motion、无 emoji 图标）"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端质量红线检查"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "类型安全检查：无 any、schema 与类型一致"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端/route 质量红线检查"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "校验代理路由错误/超时/流中断处理是否合规"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "校验日志不泄露 API Key（关键安全验收项）"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "检查代码复用：流式解析、schema 校验等是否抽复用"}
