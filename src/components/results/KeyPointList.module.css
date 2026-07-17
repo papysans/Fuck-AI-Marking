@@ -12,6 +12,28 @@
   margin: 0;
 }
 
+/* Collapsible section header (covered group) */
+.sectionToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-foreground);
+}
+
+.count {
+  font-size: 12px;
+  color: var(--color-muted);
+  padding: 1px var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+}
+
 .empty {
   color: var(--color-muted);
   font-size: 13px;
@@ -29,10 +51,28 @@
 
 .item {
   display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+/* A row that is either an expandable button or a static div */
+.row,
+.rowStatic {
+  display: flex;
   align-items: baseline;
   gap: var(--space-sm);
+  width: 100%;
   font-size: 14px;
+  font-family: inherit;
   color: var(--color-foreground);
+  text-align: left;
+}
+
+.row {
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
 }
 
 .dot {
@@ -63,4 +103,94 @@
   font-size: 12px;
   color: var(--color-muted);
   white-space: nowrap;
+}
+
+.rowChevron {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-muted);
+  transform: translateY(1px);
+}
+
+.chevron {
+  transition: transform 200ms ease;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+/* Expanded detail panel */
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding-left: calc(8px + var(--space-sm));
+  animation: kp-expand 180ms ease;
+}
+
+.reasoning {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-foreground);
+}
+
+.detailLabel {
+  margin-right: var(--space-xs);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.evidence {
+  margin: 0;
+  padding: var(--space-xs) var(--space-sm);
+  border-left: 3px solid var(--color-border);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-foreground);
+  white-space: pre-wrap;
+}
+
+.evMissing {
+  border-left-color: var(--color-secondary);
+  background: rgba(255, 92, 122, 0.08);
+}
+.evPartial {
+  border-left-color: var(--color-primary);
+  background: rgba(255, 194, 75, 0.08);
+}
+.evCovered {
+  border-left-color: var(--color-success);
+  background: rgba(87, 224, 166, 0.08);
+}
+
+.noEvidence {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-muted);
+  font-style: italic;
+}
+
+@keyframes kp-expand {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+  .detail {
+    animation: none;
+  }
 }

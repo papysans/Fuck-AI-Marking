@@ -3,7 +3,8 @@
 import { useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import type { AgentRunView } from "@/hooks/useStreamingGrade";
-import { KeyPointList } from "./KeyPointList";
+import type { KeyPoint } from "@/lib/types";
+import { KeyPointList, type KeyPointDetail } from "./KeyPointList";
 import styles from "./AgentCard.module.css";
 
 function scoreColor(score: number): string {
@@ -75,22 +76,57 @@ export function AgentCard({
               <p className={styles.error}>该评审输出解析失败，未计入评分</p>
             )}
             <p className={styles.stream}>{grade.commentary}</p>
-            {!grade.invalid && (
-              <>
-                <div className={styles.breakdown}>
-                  <span className={styles.chip}>命中 {grade.breakdown.covered}</span>
-                  <span className={styles.chip}>不完整 {grade.breakdown.partial}</span>
-                  <span className={styles.chip}>缺失 {grade.breakdown.missing}</span>
-                  <span className={styles.chipMuted}>共 {grade.breakdown.total}</span>
-                </div>
-                <div className={styles.keyPointScroll}>
-                  <KeyPointList title="缺失要点" items={grade.missing} tone="missing" />
-                </div>
-                <div className={styles.keyPointScroll}>
-                  <KeyPointList title="不完整要点" items={grade.partial} tone="partial" />
-                </div>
-              </>
-            )}
+            {!grade.invalid &&
+              (() => {
+                const details: Record<string, KeyPointDetail> = {};
+                for (const j of grade.judgments) {
+                  details[j.id] = {
+                    evidence: j.student_evidence,
+                    reasoning: j.reasoning,
+                  };
+                }
+                // Covered key points aren't carried on the grade with text, so
+                // derive display items from the covered judgments themselves.
+                const covered: KeyPoint[] = grade.judgments
+                  .filter((j) => j.label === "covered")
+                  .map((j) => ({
+                    id: j.id,
+                    text: j.reasoning || `要点 ${j.id}`,
+                    weight: 1,
+                  }));
+                return (
+                  <>
+                    <div className={styles.breakdown}>
+                      <span className={styles.chip}>命中 {grade.breakdown.covered}</span>
+                      <span className={styles.chip}>不完整 {grade.breakdown.partial}</span>
+                      <span className={styles.chip}>缺失 {grade.breakdown.missing}</span>
+                      <span className={styles.chipMuted}>共 {grade.breakdown.total}</span>
+                    </div>
+                    <div className={styles.keyPointScroll}>
+                      <KeyPointList
+                        title="缺失要点"
+                        items={grade.missing}
+                        tone="missing"
+                        details={details}
+                      />
+                      <KeyPointList
+                        title="不完整要点"
+                        items={grade.partial}
+                        tone="partial"
+                        details={details}
+                      />
+                      <KeyPointList
+                        title="命中要点"
+                        items={covered}
+                        tone="covered"
+                        details={details}
+                        showWeight={false}
+                        collapsible
+                      />
+                    </div>
+                  </>
+                );
+              })()}
           </>
         )}
       </div>

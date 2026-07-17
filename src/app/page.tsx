@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import type { AgentConfig } from "@/lib/types";
 import { loadAgents } from "@/lib/storage";
@@ -10,8 +11,18 @@ import { ProblemInputs } from "@/components/inputs/ProblemInputs";
 import { Stage, type Performer } from "@/components/stage/Stage";
 import { AgentCard } from "@/components/results/AgentCard";
 import { SummaryPanel } from "@/components/results/SummaryPanel";
+import { KeyPointList } from "@/components/results/KeyPointList";
 import { AgentStatusBar } from "@/components/status/AgentStatusBar";
+import { HistoryDrawer } from "@/components/history/HistoryDrawer";
 import type { CharacterStatus } from "@/components/stage/SpriteCharacter";
+import { buildMarkdownReport, reportFileName, type ReportInput } from "@/lib/report";
+import {
+  appendHistory,
+  clearHistory,
+  loadHistory,
+  removeHistory,
+  type HistoryEntry,
+} from "@/lib/history";
 import styles from "./page.module.css";
 
 type ViewMode = "basic" | "fancy";
@@ -25,6 +36,16 @@ export default function Home() {
   const [answer, setAnswer] = useState("");
   const [focusMode, setFocusMode] = useState(false);
   const [mode, setMode] = useState<ViewMode>("basic");
+
+  // History + report state.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  // When set, the results area shows a read-only playback of a past snapshot
+  // instead of the live grading run. `null` = live mode.
+  const [viewing, setViewing] = useState<HistoryEntry | null>(null);
+  const [copied, setCopied] = useState(false);
+  // Guards the auto-save effect against duplicate writes for one round.
+  const savedKeyRef = useRef<string | null>(null);
 
   const { state, run, revise, reset } = useStreamingGrade();
 
@@ -43,15 +64,64 @@ export default function Home() {
     window.localStorage.setItem(MODE_KEY, mode);
   }, [mode]);
 
-  const busy =
-    state.phase === "extracting" ||
-    state.phase === "judging" ||
-    state.phase === "summarizing";
+  // Load history once on mount (SSR-safe read inside loadHistory).
+  useEffect(() => {
+    setHistory(loadHistory());
+  }, []);
 
   const enabledAgents = useMemo(
     () => agents.filter((a) => a.enabled && a.apiKey && a.model && a.baseUrl),
     [agents],
   );
+
+  // Auto-save a snapshot when a round completes. A fresh run passes through
+  // "extracting" (resets the guard) so round 1 of a new problem always saves;
+  // each revise() bumps `round`, giving a distinct guard key. appendHistory's
+  // dedup keeps one row per problem across rounds (latest round wins).
+  useEffect(() => {
+    if (state.phase === "extracting") {
+      savedKeyRef.current = null;
+      return;
+    }
+    if (state.phase !== "done") return;
+    const key = `${state.round}`;
+    if (savedKeyRef.current === key) return;
+    savedKeyRef.current = key;
+
+    const snapshotAgents = enabledAgents.map((a) => {
+      const g = state.runs[a.id]?.grade;
+      return {
+        name: a.name,
+        accentIndex: a.accentIndex,
+        score: g?.score ?? 0,
+        invalid: g?.invalid ?? false,
+        missing: g?.missing ?? [],
+        partial: g?.partial ?? [],
+        commentary: g?.commentary ?? state.runs[a.id]?.commentary ?? "",
+      };
+    });
+    const entry: HistoryEntry = {
+      id: crypto.randomUUID(),
+      ts: Date.now(),
+      question,
+      notes,
+      answer,
+      mode,
+      round: state.round,
+      agents: snapshotAgents,
+      median: state.aggregate?.medianScore ?? 0,
+      unionMissing: state.aggregate?.unionMissing ?? [],
+      disagreements: state.aggregate?.disagreements ?? [],
+      summaryText: state.summaryText,
+    };
+    setHistory(appendHistory(entry));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.phase, state.round]);
+
+  const busy =
+    state.phase === "extracting" ||
+    state.phase === "judging" ||
+    state.phase === "summarizing";
 
   const inputsReady = question.trim() && notes.trim() && answer.trim();
   const started = state.phase !== "idle";
@@ -63,11 +133,110 @@ export default function Home() {
   };
 
   const handlePrimary = () => {
+    setViewing(null); // leave history playback when a live run starts
     if (state.phase === "done" && state.round >= 1) {
       void revise(answer);
     } else {
       void run(question, notes, answer, agents);
     }
+  };
+
+  const handleReset = () => {
+    reset();
+    setViewing(null);
+    savedKeyRef.current = null;
+  };
+
+  // Copy the report to the clipboard AND download it as a .md file.
+  const exportReport = async (input: ReportInput) => {
+    const md = buildMarkdownReport(input);
+    try {
+      await navigator.clipboard.writeText(md);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      /* clipboard blocked — download still proceeds */
+    }
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = reportFileName(input.question);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const liveReportInput = (): ReportInput => ({
+    question,
+    notes,
+    answer,
+    round: state.round,
+    agents: enabledAgents.map((a) => {
+      const g = state.runs[a.id]?.grade;
+      return {
+        name: a.name,
+        score: g?.score ?? 0,
+        invalid: g?.invalid,
+        missing: g?.missing ?? [],
+        partial: g?.partial ?? [],
+        commentary: g?.commentary ?? "",
+      };
+    }),
+    median: state.aggregate?.medianScore ?? 0,
+    unionMissing: state.aggregate?.unionMissing ?? [],
+    disagreements: state.aggregate?.disagreements ?? [],
+    summaryText: state.summaryText,
+  });
+
+  const entryReportInput = (e: HistoryEntry): ReportInput => ({
+    question: e.question,
+    notes: e.notes,
+    answer: e.answer,
+    round: e.round,
+    agents: e.agents.map((a) => ({
+      name: a.name,
+      score: a.score,
+      invalid: a.invalid,
+      missing: a.missing,
+      partial: a.partial,
+      commentary: a.commentary,
+    })),
+    median: e.median,
+    unionMissing: e.unionMissing,
+    disagreements: e.disagreements,
+    summaryText: e.summaryText,
+  });
+
+  // History drawer actions.
+  const openHistory = () => {
+    setHistory(loadHistory());
+    setHistoryOpen(true);
+  };
+  const loadEntry = (e: HistoryEntry) => {
+    setQuestion(e.question);
+    setNotes(e.notes);
+    setAnswer(e.answer);
+    setViewing(e); // enter read-only playback
+    setHistoryOpen(false);
+  };
+  const deleteEntry = (id: string) => {
+    setHistory(removeHistory(id));
+    if (viewing?.id === id) setViewing(null);
+  };
+  const clearAll = () => {
+    setHistory(clearHistory());
+    setViewing(null);
+  };
+  const newBlank = () => {
+    reset();
+    setQuestion("");
+    setNotes("");
+    setAnswer("");
+    setViewing(null);
+    setHistoryOpen(false);
+    savedKeyRef.current = null;
   };
 
   // Build the stage lineup. Before a run, show the enabled agents idling.
@@ -114,6 +283,15 @@ export default function Home() {
             >
               {mode === "basic" ? <BoltIcon /> : <SparkIcon />}
               {mode === "basic" ? "极简版" : "炫技版"}
+            </button>
+            <button
+              type="button"
+              className={styles.historyBtn}
+              onClick={openHistory}
+              title="查看历史记录"
+            >
+              <HistoryIcon />
+              历史
             </button>
           </div>
 
@@ -178,8 +356,8 @@ export default function Home() {
             >
               {primaryLabel}
             </button>
-            {started && !busy && (
-              <button type="button" className={styles.ghostBtn} onClick={reset}>
+            {(started || viewing) && !busy && (
+              <button type="button" className={styles.ghostBtn} onClick={handleReset}>
                 重置
               </button>
             )}
@@ -203,26 +381,115 @@ export default function Home() {
           )}
         </section>
 
-        {started && (
+        {viewing ? (
           <section className={styles.results}>
+            <div className={styles.reviewBanner}>
+              <span className={styles.reviewTag}>
+                <EyeIcon />
+                历史回看 · 第 {viewing.round} 轮
+              </span>
+              <button
+                type="button"
+                className={styles.exportBtn}
+                onClick={() => void exportReport(entryReportInput(viewing))}
+              >
+                {copied ? <CheckIcon /> : <DownloadIcon />}
+                {copied ? "已复制" : "导出报告"}
+              </button>
+              <button
+                type="button"
+                className={styles.ghostBtn}
+                onClick={() => setViewing(null)}
+              >
+                退出回看
+              </button>
+            </div>
             <div className={styles.cardsGrid}>
-              {enabledAgents.map((a) => (
-                <AgentCard
-                  key={a.id}
-                  name={a.name}
-                  accentIndex={a.accentIndex}
-                  run={state.runs[a.id] ?? { status: "pending", commentary: "" }}
-                />
+              {viewing.agents.map((a, i) => (
+                <section
+                  key={`${a.name}-${i}`}
+                  className={styles.reviewCard}
+                  style={{ "--accent": `var(--agent-${a.accentIndex})` } as CSSProperties}
+                >
+                  <header className={styles.reviewHead}>
+                    <span className={styles.reviewName}>
+                      <span className={styles.reviewDot} aria-hidden="true" />
+                      {a.name}
+                    </span>
+                    <span className={styles.reviewBadge}>
+                      {a.invalid ? "—" : a.score}
+                    </span>
+                  </header>
+                  {a.invalid && (
+                    <p className={styles.reviewInvalid}>该评审输出解析失败，未计入评分</p>
+                  )}
+                  {a.commentary.trim() && (
+                    <p className={styles.reviewComment}>{a.commentary}</p>
+                  )}
+                  {!a.invalid && (
+                    <>
+                      <KeyPointList title="缺失要点" items={a.missing} tone="missing" />
+                      <KeyPointList title="不完整要点" items={a.partial} tone="partial" />
+                    </>
+                  )}
+                </section>
               ))}
             </div>
             <SummaryPanel
-              text={state.summaryText}
-              status={state.summaryStatus}
-              aggregate={state.aggregate}
+              text={viewing.summaryText}
+              status="done"
+              aggregate={{
+                medianScore: viewing.median,
+                unionMissing: viewing.unionMissing,
+                disagreements: viewing.disagreements,
+              }}
             />
           </section>
+        ) : (
+          started && (
+            <section className={styles.results}>
+              {state.phase === "done" && (
+                <div className={styles.exportRow}>
+                  <button
+                    type="button"
+                    className={styles.exportBtn}
+                    onClick={() => void exportReport(liveReportInput())}
+                  >
+                    {copied ? <CheckIcon /> : <DownloadIcon />}
+                    {copied ? "已复制" : "导出报告"}
+                  </button>
+                </div>
+              )}
+              <div className={styles.cardsGrid}>
+                {enabledAgents.map((a) => (
+                  <AgentCard
+                    key={a.id}
+                    name={a.name}
+                    accentIndex={a.accentIndex}
+                    run={state.runs[a.id] ?? { status: "pending", commentary: "" }}
+                  />
+                ))}
+              </div>
+              <SummaryPanel
+                text={state.summaryText}
+                status={state.summaryStatus}
+                aggregate={state.aggregate}
+              />
+            </section>
+          )
         )}
       </main>
+
+      <HistoryDrawer
+        open={historyOpen}
+        entries={history}
+        activeId={viewing?.id}
+        onClose={() => setHistoryOpen(false)}
+        onLoad={loadEntry}
+        onDelete={deleteEntry}
+        onClear={clearAll}
+        onNew={newBlank}
+      />
     </div>
   );
 }
@@ -287,6 +554,63 @@ function ArrowIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+function HistoryIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M3 12a9 9 0 109-9 9 9 0 00-7.5 4M3 4v3.5H6.5M12 7v5l3.5 2"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M5 13l4 4L19 7"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="2.5" stroke="currentColor" strokeWidth="2" />
     </svg>
   );
 }

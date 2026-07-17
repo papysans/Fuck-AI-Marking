@@ -85,6 +85,8 @@ interface RobotEntry {
   actions: Map<ClipName, THREE.AnimationAction>;
   current: ClipName | null;
   tintedMats: THREE.Material[];
+  /** stable lineup index → drives deterministic phase / speed desync. */
+  index: number;
 }
 
 export default function StageCanvas({ performers }: { performers: RobotSpec[] }) {
@@ -121,8 +123,14 @@ export default function StageCanvas({ performers }: { performers: RobotSpec[] })
 
     const clock = new THREE.Clock();
     const robots = new Map<string, RobotEntry>();
-    const SPACING = 2.0;
+    // Wider than the old 2.0 so 2–6 robots never overlap; refit re-frames.
+    const SPACING = 3.2;
     let desired: RobotSpec[] = [];
+
+    /** Deterministic mixer speed jitter (~0.9–1.1) so loops drift apart. */
+    function timeScaleFor(index: number): number {
+      return 0.9 + (index % 5) * 0.05;
+    }
 
     function sizeToHost() {
       const w = Math.max(host!.clientWidth, 1);
@@ -176,6 +184,10 @@ export default function StageCanvas({ performers }: { performers: RobotSpec[] })
         next.clampWhenFinished = true;
       }
       next.timeScale = reducedMotion ? 0 : 1;
+      // Deterministic phase offset so robots don't animate in lockstep. The
+      // mixer's per-entry timeScale (set in sync) then makes loops drift apart.
+      const dur = next.getClip().duration;
+      if (dur > 0) next.time = (entry.index * 0.37 * dur) % dur;
       next.fadeIn(prev && !immediate ? 0.3 : 0).play();
       if (prev && prev !== next) prev.fadeOut(immediate ? 0 : 0.3);
       entry.current = clip;
@@ -185,7 +197,7 @@ export default function StageCanvas({ performers }: { performers: RobotSpec[] })
       if (reducedMotion) entry.mixer.update(0);
     }
 
-    function buildRobot(gltf: GLTF, spec: RobotSpec): RobotEntry {
+    function buildRobot(gltf: GLTF, spec: RobotSpec, index: number): RobotEntry {
       const root = cloneSkeleton(gltf.scene);
       const hex = AGENT_HEX[((spec.accentIndex - 1) % 6 + 6) % 6];
       const tintedMats: THREE.Material[] = [];
@@ -205,13 +217,15 @@ export default function StageCanvas({ performers }: { performers: RobotSpec[] })
       });
 
       const mixer = new THREE.AnimationMixer(root);
+      // Slight per-robot speed jitter so identical loops gradually desync.
+      mixer.timeScale = timeScaleFor(index);
       const actions = new Map<ClipName, THREE.AnimationAction>();
       for (const clip of gltf.animations) {
         if ((CLIP_LIST as readonly string[]).includes(clip.name)) {
           actions.set(clip.name as ClipName, mixer.clipAction(clip));
         }
       }
-      return { root, mixer, actions, current: null, tintedMats };
+      return { root, mixer, actions, current: null, tintedMats, index };
     }
 
     function disposeEntry(entry: RobotEntry) {
@@ -237,18 +251,22 @@ export default function StageCanvas({ performers }: { performers: RobotSpec[] })
         }
       }
 
-      for (const spec of specs) {
+      specs.forEach((spec, index) => {
         let entry = robots.get(spec.id);
         const clip = clipFor(spec.status, spec.score);
         if (!entry) {
-          entry = buildRobot(gltfCache, spec);
+          entry = buildRobot(gltfCache!, spec, index);
           robots.set(spec.id, entry);
           scene.add(entry.root);
           play(entry, clip, true);
         } else {
+          // Roster order may shift as agents are added/removed — keep the
+          // phase/speed desync tied to the current lineup index.
+          entry.index = index;
+          entry.mixer.timeScale = reducedMotion ? 0 : timeScaleFor(index);
           play(entry, clip, false);
         }
-      }
+      });
 
       layout();
     }
