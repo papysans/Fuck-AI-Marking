@@ -34,7 +34,9 @@ export default function Home() {
   const [question, setQuestion] = useState("");
   const [notes, setNotes] = useState("");
   const [answer, setAnswer] = useState("");
-  const [mode, setMode] = useState<ViewMode>("basic");
+  // `null` = not yet hydrated from localStorage. Rendering and persistence both
+  // wait for a real value so the default can never clobber the saved one.
+  const [mode, setMode] = useState<ViewMode | null>(null);
 
   // History + report state.
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -55,13 +57,16 @@ export default function Home() {
 
   // Hydrate view mode from localStorage after mount (SSR-safe).
   // Migration: the old "fancy" value maps to the new "immersive" mode.
+  // Anything else (absent / corrupt) falls back to "basic".
   useEffect(() => {
     const saved = window.localStorage.getItem(MODE_KEY);
-    if (saved === "immersive" || saved === "fancy") setMode("immersive");
-    else if (saved === "basic") setMode("basic");
+    setMode(saved === "immersive" || saved === "fancy" ? "immersive" : "basic");
   }, []);
 
+  // Persist only after hydration: writing while `mode` is null would overwrite
+  // the saved value with the default before it has ever been read.
   useEffect(() => {
+    if (mode === null) return;
     window.localStorage.setItem(MODE_KEY, mode);
   }, [mode]);
 
@@ -107,7 +112,8 @@ export default function Home() {
       question,
       notes,
       answer,
-      mode,
+      // Auto-save only runs on a completed round, long after hydration.
+      mode: mode ?? "basic",
       round: state.round,
       agents: snapshotAgents,
       median: state.aggregate?.medianScore ?? 0,
@@ -255,7 +261,10 @@ export default function Home() {
     });
   }, [enabledAgents, state.runs, started]);
 
-  const toggleMode = () => setMode((m) => (m === "basic" ? "immersive" : "basic"));
+  // `m === null` is unreachable (neither toggle is rendered pre-hydration), but
+  // stay a no-op rather than inventing a mode.
+  const toggleMode = () =>
+    setMode((m) => (m === null ? m : m === "basic" ? "immersive" : "basic"));
 
   const primaryLabel =
     state.phase === "extracting"
@@ -267,6 +276,15 @@ export default function Home() {
           : state.phase === "done" && state.round >= 1
             ? "带上下文重新评分"
             : "开始评分";
+
+  // Pre-hydration frame (SSR output + the client's first render, before the
+  // read effect lands). Deliberately neutral: painting the basic UI here would
+  // flash it at every immersive-mode visitor for one frame. An empty
+  // viewport-height box just holds the stage background and page height, so
+  // there is no jump or scrollbar flicker when the real mode arrives.
+  if (mode === null) {
+    return <div style={{ minHeight: "100vh" }} aria-hidden />;
+  }
 
   if (mode === "immersive") {
     return (
