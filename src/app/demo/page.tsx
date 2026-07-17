@@ -123,7 +123,7 @@ export default function DemoPage() {
         <div className={styles.topRow}>
           <section className={`${styles.glassCard} ${styles.titleCard}`}>
             <p className={styles.eyebrow}>Immersive Test Bench</p>
-            <h1 className={styles.title}>评分录音棚 · 测试台</h1>
+            <h1 className={styles.title}>圆桌议会 · 测试台</h1>
             <p className={styles.subtitle}>
               数据驱动的 &lt;ImmersiveScene&gt; 预览：评审角色围圈面对面「争论」、缓慢转台、
               头顶对话框流式点评。下方按钮模拟一次评分，并可增删角色验证围圈自适应。

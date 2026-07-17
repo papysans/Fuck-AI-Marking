@@ -101,6 +101,21 @@ const WIN_CANDIDATES = ["Cheer", "Jump_Full_Short"];
 const LOSE_CANDIDATES = ["Death_A", "Death_B"];
 const ERROR_CANDIDATES = ["Hit_A", "Hit_B"];
 
+/**
+ * One-shot "the camera is on ME" gesture, played when a character is focused.
+ *
+ * Verified against the real clip lists, NOT assumed: `Yes` does not exist on any
+ * of the four models, and `Taunt` exists ONLY on Skeleton_Warrior (95 clips vs
+ * 76) — so in practice the skeleton jeers and everyone else throws the
+ * big raised-arm `Spellcast_Raise`. Same availability-driven resolution as every
+ * other slot, so a missing name just falls through.
+ *
+ * Deliberately NO fallback to `pending`: firing `Idle` once as a "look at me"
+ * gesture is a no-op that would only fight the state machine. `null` → the
+ * caller skips the gesture entirely.
+ */
+const FOCUS_CANDIDATES = ["Taunt", "Spellcast_Raise", "Interact", "Cheer"];
+
 export interface AnimationPlan {
   pending: string | null;
   /** Non-empty whenever anything is playable; cycled while streaming. */
@@ -108,6 +123,8 @@ export interface AnimationPlan {
   win: string | null;
   lose: string | null;
   error: string | null;
+  /** One-shot focus gesture, or null if this model has none worth playing. */
+  focus: string | null;
 }
 
 function firstAvailable(candidates: string[], have: Set<string>): string | null {
@@ -138,6 +155,7 @@ export function planFor(animations: THREE.AnimationClip[]): AnimationPlan {
     win: firstAvailable(WIN_CANDIDATES, have) ?? pending,
     lose: firstAvailable(LOSE_CANDIDATES, have) ?? pending,
     error: firstAvailable(ERROR_CANDIDATES, have) ?? pending,
+    focus: firstAvailable(FOCUS_CANDIDATES, have),
   };
 }
 
@@ -174,7 +192,50 @@ export interface FitResult {
   scale: number;
   /** Y position that drops the (scaled) feet exactly onto `groundY`. */
   y: number;
+  /**
+   * Every material this character renders with, all of them PRIVATE to this
+   * instance — safe to mutate per frame (see the focus fade in Character.tsx).
+   * See `prepareCharacter` for why ownership is not optional here.
+   */
+  materials: THREE.Material[];
+  /**
+   * Height of the MEASURED `head` joint, in the character group's space (i.e.
+   * already scaled and grounded — the same space `y` is in). This is the neck
+   * pivot, not the face: see HEAD_JOINT.
+   */
+  headY: number;
+  /** Height of the measured crown (top of the body box), same space as `headY`. */
+  topY: number;
 }
+
+/**
+ * The joint every one of the four rigs hangs its head off:
+ * `Rig/root/hips/spine/chest/head`. Verified present, and a real skin joint, in
+ * all four GLBs.
+ *
+ * Two things worth knowing before you use it as a camera target:
+ *
+ * 1. It sits at bind-local y=1.2414 on ALL four models (they share one KayKit
+ *    skeleton) — but the models are authored at different BODY heights (2.17 to
+ *    2.32), so each gets a different normalisation scale and the joint lands at a
+ *    different world height per character. Hence: measure, never hardcode.
+ * 2. It is the NECK PIVOT, not the face. This cast is chibi — the head spans
+ *    from the joint (1.2414) to the crown (~2.2-2.32), i.e. ~46% of the whole
+ *    body. Aiming a close-up at the joint would frame the chin. Callers should
+ *    lerp between `headY` and `topY` to find the face.
+ */
+const HEAD_JOINT = "head";
+
+/**
+ * Where the FACE is, as a blend from the measured neck joint (`headY`, 0) to the
+ * measured crown (`topY`, 1). 0.45 lands just under the eyes on this cast.
+ *
+ * Both ENDS are measured per-model; only this blend is authored — which is the
+ * point: the number stays valid if the models, TARGET_HEIGHT or MEASURE_BASIS
+ * ever change, because it's a proportion of a measured head rather than a world
+ * height. Lives here, next to the measurement that defines its endpoints.
+ */
+export const FACE_LIFT = 0.45;
 
 /**
  * What "same height" means — a real trade-off, because the four models differ
@@ -230,11 +291,57 @@ export function prepareCharacter(
 ): FitResult {
   const { def, accent, targetHeight, groundY, basis = "silhouette" } = opts;
 
+  /**
+   * Source material → this instance's private copy.
+   *
+   * EVERY material is cloned now, not just the ones we tint. `SkeletonUtils.clone`
+   * shares materials with the source scene AND therefore with every other clone of
+   * it, and `useGLTF` caches that scene — so two reviewers who happen to roll the
+   * same body (guaranteed above 4 reviewers, since the cast is 4) render with the
+   * SAME material object. That was invisible while materials were only read, but
+   * the focus fade WRITES `opacity`/`transparent` per character: shared materials
+   * would mean dimming one reviewer also dims the reviewer wearing the same body.
+   * Ownership is what makes the fade addressable at all.
+   *
+   * Keyed by source so meshes sharing a material inside ONE model keep sharing a
+   * single copy (fewer uniform uploads, and the fade stays one write per material
+   * rather than one per mesh).
+   *
+   * Cost is bounded and cheap: a clone keeps the same `map` texture reference (no
+   * re-upload) and the same program cache key, so three hands back the SAME
+   * compiled program — no extra shader compiles, just a few more uniform sets.
+   * Not disposed, matching this module's existing convention: the copies are
+   * plain garbage once the clone is dropped, and the programs they refcount are
+   * shared with the characters still on stage.
+   */
+  const owned = new Map<THREE.Material, THREE.Material>();
+  const ownMaterial = (mat: THREE.Material): THREE.Material => {
+    const cached = owned.get(mat);
+    if (cached) return cached;
+    const copy = mat.clone();
+    // Tint. KayKit bodies use ONE atlas texture (`knight_texture` etc.) and
+    // `material.color` MULTIPLIES it, so tinting them just washes the whole
+    // character in the accent. Only untextured materials are safe — in practice
+    // exactly Skeleton_Warrior's `Glow` (the eyes; no baseColorTexture,
+    // emissiveFactor 1,1,0.19). Identity comes from the body itself; the accent
+    // still rings the head bubble.
+    const std = asStandardMaterial(copy);
+    if (std && !std.map) {
+      std.color = new THREE.Color(accent);
+      std.emissive = new THREE.Color(accent);
+      std.emissiveIntensity = 1.4; // reads as a glow through the Bloom pass
+    }
+    owned.set(mat, copy);
+    return copy;
+  };
+
   clone.traverse((obj) => {
     const mesh = asMesh(obj);
     if (!mesh) return;
 
-    // 1. Hide the equipment pile (keep at most the whitelisted item).
+    // 1. Hide the equipment pile (keep at most the whitelisted item). Returning
+    //    before `ownMaterial` on purpose: a mesh that never renders needs no
+    //    private copy, and its material must stay out of the fade list.
     if (inHandSlot(mesh) && mesh.name !== def.equip) {
       mesh.visible = false;
       return;
@@ -243,25 +350,10 @@ export function prepareCharacter(
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
-    // 2. Tint. KayKit bodies use ONE atlas texture (`knight_texture` etc.) and
-    //    `material.color` MULTIPLIES it, so tinting them just washes the whole
-    //    character in the accent. Only untextured materials are safe — in
-    //    practice exactly Skeleton_Warrior's `Glow` (the eyes; no
-    //    baseColorTexture, emissiveFactor 1,1,0.19). Identity comes from the
-    //    body itself; the accent still rings the head bubble.
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    const tintedMats = mats.map((mat) => {
-      const std = asStandardMaterial(mat);
-      if (!std || std.map) return mat;
-      // SkeletonUtils.clone SHARES materials, so tint a per-instance copy or
-      // every skeleton on stage would take the last reviewer's colour.
-      const tinted = std.clone();
-      tinted.color = new THREE.Color(accent);
-      tinted.emissive = new THREE.Color(accent);
-      tinted.emissiveIntensity = 1.4; // reads as a glow through the Bloom pass
-      return tinted;
-    });
-    mesh.material = Array.isArray(mesh.material) ? tintedMats : tintedMats[0];
+    // 2. Take private ownership of the material(s), tinting on the way through.
+    mesh.material = Array.isArray(mesh.material)
+      ? mesh.material.map(ownMaterial)
+      : ownMaterial(mesh.material);
   });
 
   // 3. Measure (bind pose, visible meshes only).
@@ -282,9 +374,36 @@ export function prepareCharacter(
     box.union(tmp);
   });
 
-  if (box.isEmpty()) return { scale: 1, y: groundY };
+  const materials = [...owned.values()];
+
+  if (box.isEmpty()) {
+    return { scale: 1, y: groundY, headY: groundY, topY: groundY, materials };
+  }
 
   const height = box.max.y - box.min.y;
   const scale = height > 1e-4 ? targetHeight / height : 1;
-  return { scale, y: groundY - box.min.y * scale };
+  const y = groundY - box.min.y * scale;
+  // A point at clone-local `ly` renders at `y + ly * scale` (the clone is placed
+  // at [0, y, 0] with a uniform `scale`), so both of these are in the character
+  // group's space, ready for the camera rig.
+  const topY = y + box.max.y * scale;
+
+  // 4. Measure the head joint (bind pose — the mixer hasn't touched the clone).
+  //
+  //    `bone.matrixWorld` is only clone-LOCAL while the clone is detached, which
+  //    it is on the first render but not if this memo is ever re-run after mount
+  //    (e.g. the accent colour changes). Cancelling the clone's own matrixWorld
+  //    makes the result parent-independent either way, so the focus target can
+  //    never silently pick up the ring offset twice.
+  const bone = clone.getObjectByName(HEAD_JOINT);
+  let headY = y + (box.min.y + (box.max.y - box.min.y) * 0.55) * scale;
+  if (bone) {
+    const rel = new THREE.Matrix4()
+      .copy(clone.matrixWorld)
+      .invert()
+      .multiply(bone.matrixWorld);
+    headY = y + new THREE.Vector3().setFromMatrixPosition(rel).y * scale;
+  }
+
+  return { scale, y, headY, topY, materials };
 }

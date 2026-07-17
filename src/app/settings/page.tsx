@@ -66,7 +66,7 @@ export default function SettingsPage() {
               <strong>逐点判定</strong>：每个评审 Agent 并发流式地对每个要点先给证据、再判 覆盖 / 部分 / 缺失；引不出证据即判缺失。
             </li>
             <li>
-              <strong>确定性算分</strong>：分数由前端代码按要点权重计算得出，<strong>不由模型直接拍</strong>；再由制作人 Agent 归并各评审的漏点成优先级清单。
+              <strong>确定性算分</strong>：分数由前端代码按要点权重计算得出，<strong>不由模型直接拍</strong>；再由议长 Agent 合议裁定，归并各评审的漏点成优先级清单。
             </li>
           </ol>
         </div>

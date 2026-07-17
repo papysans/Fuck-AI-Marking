@@ -97,7 +97,7 @@ export function buildRejudgeMessage(revisedAnswer: string): ChatMessage {
 
 // ---- Summary agent ---------------------------------------------------------
 
-const SUMMARY_SYSTEM = `你是评审团的"制作人"。多个评审模型各自对同一份答案做了逐要点判定。你的任务：把它们的判定归并成一份"面向学生、按优先级排序的修改清单"。
+const SUMMARY_SYSTEM = `你是圆桌议会的"议长"，负责合议裁定。多个评审模型各自对同一份答案做了逐要点判定。你的任务：把它们的判定归并成一份"面向学生、按优先级排序的修改清单"。
 
 规则：
 - 优先级：被越多评审共同判为 missing/partial 的要点越靠前（这些是任何 AI 判卷都可能扣分的客观缺陷）。

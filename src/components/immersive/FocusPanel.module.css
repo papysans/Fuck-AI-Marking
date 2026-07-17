@@ -1,0 +1,222 @@
+/* Solo mode card — one reviewer, LEFT-ANCHORED, nothing else competing.
+ *
+ * Left, not centred, and this is a spatial contract with the scene rather than a
+ * layout taste: the camera trucks the focused face to ~65% of the viewport width
+ * (FOCUS_SHIFT_NDC in CharacterCircle) specifically to clear a left-hand panel.
+ * A centred panel throws away the truck AND lands on the face — which is exactly
+ * what it did.
+ *
+ * So: fill the left column (capped at 380px by the overlay grid) and cap
+ * independently at 420px, so the panel stays in its lane even if that column is
+ * ever widened. `width:100%` rather than a fixed width so it tracks the column;
+ * 560px is what made it a centre-stage card and must not come back. Height comes
+ * from the column — `.body` below is what scrolls. */
+.panel {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  max-width: 420px;
+  max-height: 100%;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  background: rgba(18, 19, 28, 0.6);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 2px solid var(--accent);
+  border-radius: 16px;
+  box-shadow: var(--shadow-xl);
+  color: var(--color-foreground);
+  animation: focus-in 260ms ease both;
+}
+
+.head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+}
+
+.name {
+  flex: 1 1 auto;
+  margin: 0;
+  font-family: var(--font-head);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--color-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.score {
+  flex: 0 0 auto;
+  font-family: var(--font-head);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.backBtn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-head);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-foreground);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 5px 11px;
+  cursor: pointer;
+  transition: border-color 200ms ease, color 200ms ease;
+}
+
+.backBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.backBtn:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+/* The whole reason this panel exists: readable review text — so it takes every
+ * pixel the act can give it and only then scrolls.
+ *
+ * Deliberately NO max-height here. `.panel` above is `flex: 1 1 auto`, so it
+ * already grows to the full left column (which, now that the input card folds
+ * for this act, is nearly the whole viewport height). A cap on the body could
+ * therefore never make the CARD smaller — it only stranded dead glass under a
+ * scrollbar that started after ~46vh of text. Bounding is handled instead by the
+ * shrink chain that ends at the overlay's `1fr` grid row: leftColumn →
+ * .focusSlot → .panel (all `min-height: 0`), which is what makes `overflow-y`
+ * here resolve against a real height rather than grow the column off-screen. */
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.body::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
+}
+
+.body:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.text {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--color-foreground);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.placeholder {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-muted);
+}
+
+.error {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-secondary);
+}
+
+.pulseRow {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: focus-pulse 1s ease-in-out infinite;
+}
+
+.pulseLabel {
+  font-size: 12.5px;
+  color: var(--color-muted);
+}
+
+@keyframes focus-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes focus-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (max-width: 720px) {
+  /* Single column: no left lane to stay inside, so let the card use the width. */
+  .panel {
+    max-width: none;
+  }
+  /* The cap survives only here: single-column shares one vertical run with the
+     stage drawer and the bottom bar, so the body yielding first is the trade. */
+  .body {
+    max-height: 34vh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    animation: none;
+  }
+  .backBtn {
+    transition: none;
+  }
+  .pulse {
+    animation: none;
+  }
+}

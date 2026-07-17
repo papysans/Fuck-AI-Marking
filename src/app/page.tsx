@@ -270,9 +270,9 @@ export default function Home() {
     state.phase === "extracting"
       ? "抽取要点中…"
       : state.phase === "judging"
-        ? "评审演出中…"
+        ? "圆桌辩议中…"
         : state.phase === "summarizing"
-          ? "制作人总结中…"
+          ? "合议裁定中…"
           : state.phase === "done" && state.round >= 1
             ? "带上下文重新评分"
             : "开始评分";
@@ -326,7 +326,7 @@ export default function Home() {
       <main className={styles.main}>
         <header className={styles.header}>
           <div className={styles.titleRow}>
-            <h1 className={styles.title}>评分录音棚</h1>
+            <h1 className={styles.title}>圆桌议会</h1>
             {state.round > 0 && (
               <span className={styles.roundBadge}>第 {state.round} 轮</span>
             )}

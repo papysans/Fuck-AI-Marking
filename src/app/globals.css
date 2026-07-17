@@ -2,8 +2,8 @@
 @import "./comic.css";
 
 /* ============================================================
-   Design tokens — Incredibox "Grading Studio" (dark stage)
-   Source of truth: design-system/ai-grading-beatbox/MASTER.md
+   Design tokens — "Round Table Council" (dark chamber)
+   Source of truth: design-system/round-table-council/MASTER.md
    ============================================================ */
 :root {
   --color-background: #12131c;

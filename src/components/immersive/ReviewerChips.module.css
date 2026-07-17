@@ -1,0 +1,133 @@
+/* Chip row — used both as the judging progress rail and as the summary-stage
+   drill-down strip. Chips are deliberately NOT glass (no backdrop-filter): they
+   sit on top of the stage and would blow the "≤3 glass cards per screen" budget
+   plus stack blur layers. A near-opaque surface gives the same legibility for
+   far less GPU. */
+.row {
+  pointer-events: auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  max-width: 220px;
+  padding: 7px 12px;
+  background: rgba(27, 29, 42, 0.9);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-foreground);
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  transition: border-color 200ms ease, background 200ms ease, transform 200ms ease;
+}
+
+.chip:hover {
+  background: rgba(36, 39, 57, 0.95);
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+/* Active = the camera is framing this reviewer. */
+.chipActive {
+  border-color: var(--accent);
+  background: rgba(36, 39, 57, 0.95);
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow-md);
+}
+
+.dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+/* Streaming reviewers breathe so the rail reads as live progress. */
+.dotLive {
+  animation: chip-pulse 1s ease-in-out infinite;
+}
+
+.name {
+  font-family: var(--font-head);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  flex: 0 0 auto;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.score {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-head);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.checkIcon {
+  flex: 0 0 auto;
+}
+
+@keyframes chip-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (max-width: 720px) {
+  .row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: flex-start;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+  .row::-webkit-scrollbar {
+    display: none;
+  }
+  .chip {
+    flex: 0 0 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip {
+    transition: none;
+  }
+  .chip:hover {
+    transform: none;
+  }
+  .dotLive {
+    animation: none;
+  }
+}

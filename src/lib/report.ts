@@ -91,7 +91,7 @@ export function buildMarkdownReport(input: ReportInput): string {
     }
   }
 
-  out.push("## 制作人总结");
+  out.push("## 合议裁定");
   out.push("");
   out.push(summaryText.trim() || "（无）");
   out.push("");

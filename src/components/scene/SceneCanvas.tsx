@@ -1,10 +1,11 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Html } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
 import { SceneEnvironment } from "./SceneEnvironment";
+import { createFocusAnchors } from "./focus";
 import {
   CharacterCircle,
   CameraRig,
@@ -42,22 +43,66 @@ const IDLE_RESUME_MS = 3500;
 export default function SceneCanvas({
   performers,
   extracting,
+  focusedId,
   bloom,
+  showBubbles,
   reducedMotion,
 }: {
   performers: ScenePerformer[];
   extracting: boolean;
+  focusedId: string | null;
   bloom: boolean;
+  /** Already defaulted by ImmersiveScene — required here, never guessed. */
+  showBubbles: boolean;
   reducedMotion: boolean;
 }) {
   const radius = ringRadius(performers.length);
   const rig = cameraSetup(radius, performers.length);
 
+  // Resolve the focus request against reality ONCE, here, so nothing downstream
+  // has to decide what an id nobody owns means: a stale/unknown id is simply no
+  // focus (→ panorama), never "aim at nothing".
+  const focus = useMemo(
+    () => (focusedId && performers.some((p) => p.id === focusedId) ? focusedId : null),
+    [focusedId, performers],
+  );
+
+  // Face-anchor registry (see focus.ts). The epoch is what re-runs the rig when
+  // a character mounts, so focusing a reviewer whose GLB is still loading lands
+  // as soon as it's there instead of being dropped.
+  const [anchorEpoch, setAnchorEpoch] = useState(0);
+  const anchors = useMemo(
+    () => createFocusAnchors(() => setAnchorEpoch((e) => e + 1)),
+    [],
+  );
+
+  /**
+   * Reveal beat trigger. Fires ONCE per "the whole jury has landed", NOT per
+   * reviewer finishing: with 3-6 agents streaming concurrently, a per-performer
+   * camera move would mean several overlapping nudges — the camera twitching
+   * exactly when the user starts reading. One beat, one moment. (And the rig
+   * spends it on the LENS, not the rig — see REVEAL_FOV_DELTA.)
+   */
+  const settled =
+    performers.length > 0 &&
+    performers.every((p) => p.status === "done" || p.status === "error") &&
+    performers.some((p) => p.status === "done");
+  const [revealKey, setRevealKey] = useState(0);
+  useEffect(() => {
+    if (settled) setRevealKey((v) => v + 1);
+  }, [settled]);
+
   // Auto-rotate pauses the moment the user grabs the scene and resumes only
   // after they've been still for IDLE_RESUME_MS. OrbitControls already gates
   // autoRotate off mid-drag (state !== NONE), so this timer is what buys the
   // "let go and read for a second without the ring walking away" grace period.
-  const [autoSpin, setAutoSpin] = useState(true);
+  //
+  // Starts FALSE: the opening move owns the first ~1.4s, and landing it hands
+  // over via the same idle timer, so the exhibit begins turning 3.5s after it
+  // settles rather than under the camera's feet. (Reduced-motion never spins
+  // regardless — `autoRotate` is gated on it below.)
+  const [autoSpin, setAutoSpin] = useState(false);
+  const [cinematic, setCinematic] = useState(false);
   const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleStart = useCallback(() => {
@@ -78,8 +123,39 @@ export default function SceneCanvas({
     [],
   );
 
+  // `autoSpin` starts false so the opening move isn't fought for the azimuth,
+  // and it's the LANDING that arms the idle timer. But reduced-motion skips the
+  // opening move entirely — so nothing would ever arm it, and a user who later
+  // turns reduced-motion OFF would be left with a ring that never turns again.
+  // Arm it here for the no-cinematic path. (Landing re-arms on top of this;
+  // handleStart/handleEnd are idempotent.)
+  useEffect(() => {
+    if (!reducedMotion) handleEnd();
+  }, [reducedMotion, handleEnd]);
+
+  /**
+   * A scripted move started/landed. Reuses the drag handlers verbatim: a
+   * cinematic is, for the purposes of "when may the ring start turning again?",
+   * exactly a hands-on period — kill the spin now, re-arm the same 3.5s grace on
+   * release. That's the "既有逻辑" the spec asks focus-out to restore.
+   */
+  const handleCinematic = useCallback(
+    (flying: boolean) => {
+      setCinematic(flying);
+      if (flying) handleStart();
+      else handleEnd();
+    },
+    [handleStart, handleEnd],
+  );
+
   const ring = (
-    <CharacterCircle performers={performers} reducedMotion={reducedMotion} />
+    <CharacterCircle
+      performers={performers}
+      focusedId={focus}
+      anchors={anchors}
+      showBubbles={showBubbles}
+      reducedMotion={reducedMotion}
+    />
   );
 
   return (
@@ -113,10 +189,14 @@ export default function SceneCanvas({
           release, and one authority over the view. */}
       <OrbitControls
         makeDefault
-        // No pan/zoom on purpose. `rig.dist` is a compile-time constant that
-        // feeds the fog band and the bubbles' `distanceFactor`; zoom would make
-        // the real eye→ring distance drift away from it and silently break both.
-        // Adding zoom later means deriving those from the live camera distance.
+        // No pan/zoom on purpose — but the reason has CHANGED, so don't re-read
+        // the old one: the bubbles no longer depend on the camera sitting at
+        // `rig.dist` (they now divide the live distance back out per frame, see
+        // CharacterBubble) and fog never did (it's per-fragment off the live
+        // camera). What zoom would break now is FOCUS: the close-up is a framing
+        // the rig computes from a known FOCUS_DIST, and a user-zoomed distance
+        // would be silently overwritten by it. Pan would likewise fight the
+        // rig's ownership of `controls.target`.
         enablePan={false}
         enableZoom={false}
         // Damping IS the inertia: release the drag and the camera coasts to a
@@ -128,12 +208,26 @@ export default function SceneCanvas({
         // Azimuth deliberately unbounded: the whole point is to orbit the ring.
         minPolarAngle={SCENE_POLAR_MIN}
         maxPolarAngle={SCENE_POLAR_MAX}
-        autoRotate={autoSpin && !reducedMotion}
+        // Off while focused (the close-up must hold still, and the user's own
+        // drag is the only thing allowed to move it) and off during any scripted
+        // move — autoRotate drives AZIMUTH, which is the one axis a focus flight
+        // also claims. Gating it here is what makes "never two sources of
+        // rotation" a fact rather than a hope.
+        autoRotate={autoSpin && !reducedMotion && !focus && !cinematic}
         autoRotateSpeed={AUTO_ROTATE_SPEED}
         onStart={handleStart}
         onEnd={handleEnd}
       />
-      <CameraRig radius={radius} count={performers.length} />
+      <CameraRig
+        radius={radius}
+        count={performers.length}
+        focusedId={focus}
+        anchors={anchors}
+        anchorEpoch={anchorEpoch}
+        revealKey={revealKey}
+        reducedMotion={reducedMotion}
+        onCinematic={handleCinematic}
+      />
 
       <Suspense fallback={null}>
         {ring}

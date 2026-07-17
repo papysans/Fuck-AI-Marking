@@ -12,7 +12,20 @@
 }
 
 /* Floating glass overlay. The layer itself ignores pointer events so the scene
-   stays interactive; individual cards re-enable them. */
+   stays draggable through the gaps; individual cards re-enable them.
+
+   THE SPATIAL CONTRACT, in two columns (see ImmersiveShell's header comment):
+
+   Column 1 is the control + reading column: title, inputs, the extraction
+   one-liner, and the solo focus panel. It is capped at 380px, and that cap is
+   load-bearing — the scene trucks a focused character's face to ~65% of the
+   VIEWPORT width, so as long as this column stays under 35% of it, a left panel
+   and the subject provably cannot overlap. At the 721px minimum where this grid
+   still applies, column 1 ends at 404px and the 65% line is at 469px.
+
+   Column 2 is the stage. Its centre hosts the ONE act that belongs centred (the
+   producer's summary — the payoff, deliberately over the ring); its bottom edge
+   carries the progress rail + result CTA. */
 .overlay {
   position: absolute;
   inset: 0;
@@ -25,7 +38,8 @@
   padding: var(--space-lg);
 }
 
-/* Shared glass card. */
+/* Shared glass card. Budget: at most 3 on screen at once (title + input +
+   whichever centre act is playing), and never nested. */
 .card {
   pointer-events: auto;
   background: rgba(18, 19, 28, 0.6);
@@ -98,23 +112,52 @@
   color: var(--color-primary);
 }
 
+.pill:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
 .teamLine {
   margin: 0;
   font-size: 13px;
   color: var(--color-muted);
 }
 
-/* ② Input card — left column, below title. */
-.inputCard {
+/* ② The left column — input card plus whichever act is anchored left.
+   `min-height: 0` here and on every child is what keeps this column inside the
+   viewport: it lets the flex items shrink past their content so a long focus
+   panel scrolls INTERNALLY (see FocusPanel `.body`) instead of growing the
+   column off-screen. Deliberately NO `overflow: hidden` as a backstop — these
+   are glass cards whose box-shadow paints outside their border box, and since
+   the column is exactly card-width (align-items: stretch) a clip would shave the
+   shadow off all of them to guard a case the shrink chain already handles.
+   Pointer-events stay off (the cards re-enable them) so the gaps between them
+   are still camera drags. */
+.leftColumn {
   grid-column: 1;
   grid-row: 2;
-  align-self: start;
-  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-md);
+}
+
+/* Input card — sized to content, allowed to shrink (its body scrolls) so it can
+   share the column with the focus panel; collapses to a bar once grading starts
+   so the stage owns the screen. */
+.inputCard {
+  flex: 0 1 auto;
   display: flex;
   flex-direction: column;
   padding: var(--space-md) var(--space-lg) var(--space-lg);
   gap: var(--space-md);
   min-height: 0;
+}
+
+.inputCardClosed {
+  padding: var(--space-sm) var(--space-lg);
 }
 
 .collapseToggle {
@@ -130,6 +173,12 @@
   border: none;
   padding: 4px 0;
   cursor: pointer;
+}
+
+.collapseToggle:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
 .inputScroll {
@@ -163,6 +212,11 @@
   box-shadow: var(--shadow-lg);
 }
 
+.primaryBtn:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
 .primaryBtn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -185,6 +239,11 @@
   color: var(--color-primary);
 }
 
+.ghostBtn:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
 .hint {
   margin: 0;
   color: var(--color-muted);
@@ -197,30 +256,108 @@
   font-size: 13.5px;
 }
 
-/* ③ Result CTA — bottom-right. */
-.resultCta {
+/* Solo focus act — panel + its chips, stacked under the input card in the LEFT
+   column. Takes the leftover column height and hands it to the panel, whose own
+   body scrolls; the chips keep their natural height underneath. */
+.focusSlot {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-sm);
+}
+
+/* Chips ride directly under the focus panel — never over the character, never
+   over the panel. `flex: none` so they are the last thing to be squeezed. */
+.focusChips {
+  flex: 0 0 auto;
+}
+
+/* ③ Centre stage slot — the producer's summary and nothing else, with its chip
+   row beneath it (never beside or over it). Empty during idle, extracting,
+   judging and focus, so the characters are the only thing to look at. */
+.stageSlot {
+  grid-column: 2;
+  grid-row: 2;
+  place-self: center;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  width: min(560px, 100%);
+  max-height: 100%;
+  min-height: 0;
+}
+
+/* Restrained extraction notice — a hint, not a panel. Lives in the left column
+   under the folded input card. */
+.notice {
+  flex: 0 0 auto;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 12px var(--space-lg);
+  background: rgba(18, 19, 28, 0.6);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  animation: notice-in 260ms ease both;
+}
+
+.noticePulse {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  animation: notice-pulse 1s ease-in-out infinite;
+}
+
+.noticeText {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-foreground);
+}
+
+/* ④ Bottom bar — rail centred in the leftover space, CTA pinned right. Flex
+   (not grid cells) so the two can never collide. */
+.bottomBar {
   grid-column: 2;
   grid-row: 3;
-  justify-self: end;
-  align-self: end;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-md);
   pointer-events: none;
 }
 
+.railWrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+
+/* Solid, not glass: keeps the on-screen blur budget at 3 cards. */
 .resultBtn {
+  flex: 0 0 auto;
   pointer-events: auto;
   font-family: var(--font-head);
   font-weight: 600;
   font-size: 15px;
   color: var(--color-foreground);
-  background: rgba(18, 19, 28, 0.6);
-  backdrop-filter: blur(16px) saturate(140%);
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  background: rgba(27, 29, 42, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 999px;
   padding: 12px 24px;
   cursor: pointer;
   box-shadow: var(--shadow-lg);
-  transition: transform 180ms ease, border-color 180ms ease;
+  transition: transform 180ms ease, border-color 180ms ease, color 180ms ease;
 }
 
 .resultBtn:hover {
@@ -229,28 +366,98 @@
   color: var(--color-primary);
 }
 
+.resultBtn:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+@keyframes notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes notice-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Single column: the summary act degrades to a bottom drawer that never walls
+   off the stage, and the bottom bar stacks under it.
+ *
+ * The left column stops being "left" here — there is no left — so the
+ * anti-overlap argument above doesn't apply and doesn't need to: below this
+ * width the scene's own aspect ramp (focusShiftNdc) has already given up the
+ * lateral truck and re-centred the subject. The focus panel is a capped,
+ * scrollable card in the single column instead, which is the same trade the
+ * scene made. */
 @media (max-width: 720px) {
   .overlay {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto 1fr;
-  }
-  .titleCard,
-  .inputCard {
-    grid-column: 1;
+    grid-template-rows: auto auto 1fr auto;
+    gap: var(--space-md);
+    padding: var(--space-md);
   }
   .titleCard {
+    grid-column: 1;
     grid-row: 1;
   }
-  .inputCard {
+  .leftColumn {
+    grid-column: 1;
     grid-row: 2;
-    max-height: 60vh;
+    max-height: 62vh;
   }
-  .resultCta {
+  .inputCard {
+    max-height: 44vh;
+  }
+  .stageSlot {
     grid-column: 1;
     grid-row: 3;
-    justify-self: stretch;
+    place-self: end stretch;
+    width: 100%;
+    align-items: stretch;
+    gap: var(--space-sm);
+  }
+  .bottomBar {
+    grid-column: 1;
+    grid-row: 4;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-sm);
   }
   .resultBtn {
     width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill,
+  .primaryBtn,
+  .ghostBtn,
+  .resultBtn,
+  .collapseToggle {
+    transition: none;
+  }
+  .primaryBtn:hover:not(:disabled),
+  .resultBtn:hover {
+    transform: none;
+  }
+  .notice {
+    animation: none;
+  }
+  .noticePulse {
+    animation: none;
   }
 }

@@ -58,13 +58,42 @@ export function ImmersiveScene(props: {
   extracting: boolean;
   /** Optional post-processing bloom toggle (defaults on; off under reduced-motion). */
   bloom?: boolean;
+  /**
+   * Fly the camera to a close-up of this performer's face. `null`/omitted (the
+   * default) = the wide ring shot. Purely additive: callers that never pass it
+   * get exactly the previous behaviour.
+   *
+   * An id that matches no performer is treated as no focus, so a caller may
+   * hand over ids optimistically without racing the performer list. While
+   * focused the ring stops auto-rotating, but the user can still drag to orbit
+   * around the face.
+   */
+  focusedId?: string | null;
+  /**
+   * Master switch for the head chat bubbles. `true` (the default) = previous
+   * behaviour exactly, so callers that never pass it are unaffected.
+   *
+   * This exists because the bubbles are a PHASE, not a permanent fixture: they
+   * are the only information source while the jury argues, and pure noise once
+   * the producer's summary panel says the same thing better. The scene has no
+   * idea what a "phase" is and must not learn — so the owner of the narrative
+   * (ImmersiveShell) states it here, in the one vocabulary the scene has:
+   * bubbles on, or bubbles off.
+   *
+   * Independent of focus, and they STACK: focus already hides every bubble
+   * (`focused || dimmed`), and this hides them regardless of focus. Neither rule
+   * knows about the other; a bubble shows only when both allow it.
+   */
+  showBubbles?: boolean;
 }): React.JSX.Element {
   const reducedMotion = usePrefersReducedMotion();
   return (
     <SceneCanvas
       performers={props.performers}
       extracting={props.extracting}
+      focusedId={props.focusedId ?? null}
       bloom={props.bloom ?? true}
+      showBubbles={props.showBubbles ?? true}
       reducedMotion={reducedMotion}
     />
   );

@@ -6,7 +6,7 @@
 
 ---
 
-**Project:** AI Grading Beatbox
+**Project:** Round Table Council
 **Generated:** 2026-07-17 09:30:47
 **Category:** Pet Tech App
 **Design Dials:** Variance 8/10 (Bold / Asymmetric) | Motion 9/10 (Complex) | Density 5/10 (Standard)
@@ -15,9 +15,9 @@
 
 ## Global Rules
 
-### Color Palette — OVERRIDDEN for Incredibox "Grading Studio" (moody dark stage)
+### Color Palette — OVERRIDDEN for the "Round Table Council" (moody dark chamber)
 
-> The generator's rose/light palette is replaced. Incredibox's identity = a dim stage with warm spotlight + high-saturation "voice" accents per character. Dark-first.
+> The generator's rose/light palette is replaced. The council's identity = a dim chamber with warm torchlight + high-saturation accents, one per council member. Dark-first.
 
 | Role | Hex | CSS Variable |
 |------|-----|--------------|

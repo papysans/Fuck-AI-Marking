@@ -54,7 +54,7 @@ export function SummaryPanel({
           <circle cx="15" cy="12" r="2.4" fill="var(--color-surface-2)" />
           <circle cx="8" cy="18" r="2.4" fill="var(--color-surface-2)" />
         </svg>
-        <h3 className={styles.heading}>制作人总结</h3>
+        <h3 className={styles.heading}>合议裁定</h3>
       </header>
 
       <div className={styles.scoreRow}>
