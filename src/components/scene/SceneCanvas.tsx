@@ -5,7 +5,13 @@ import { Canvas } from "@react-three/fiber";
 import { PresentationControls, Html } from "@react-three/drei";
 import { EffectComposer, Bloom, Vignette } from "@react-three/postprocessing";
 import { SceneEnvironment } from "./SceneEnvironment";
-import { RobotCircle, CameraRig, ringRadius } from "./RobotCircle";
+import {
+  RobotCircle,
+  CameraRig,
+  ringRadius,
+  cameraSetup,
+  SCENE_FOV,
+} from "./RobotCircle";
 import type { ScenePerformer } from "./ImmersiveScene";
 
 /**
@@ -29,17 +35,29 @@ export default function SceneCanvas({
   reducedMotion: boolean;
 }) {
   const radius = ringRadius(performers.length);
+  const rig = cameraSetup(radius, performers.length);
 
   const ring = (
     <RobotCircle performers={performers} reducedMotion={reducedMotion} />
   );
 
   return (
-    <Canvas shadows dpr={[1, 2]} camera={{ position: [0, 7, 16], fov: 40 }}>
+    <Canvas
+      shadows
+      dpr={[1, 2]}
+      // Seed the camera at the rig's own pose so the first frame doesn't flash
+      // the old close-up before CameraRig's effect lands.
+      camera={{ position: [0, rig.height, rig.distH], fov: SCENE_FOV }}
+    >
       <color attach="background" args={["#12131c"]} />
-      {/* fog starts beyond the near (front) robots and hazes the back of the
-          ring for depth; widened to match the pulled-back camera. */}
-      <fog attach="fog" args={["#12131c", radius * 2 + 12, radius * 2 + 34]} />
+      {/* Fog is measured from the CAMERA, so it must track the rig: the museum
+          camera sits ~29 units out, where the old fixed near-plane (~20) would
+          have swallowed the entire ring in haze. Anchor it just past the near
+          robots and let it fade the back of the ring for depth. */}
+      <fog
+        attach="fog"
+        args={["#12131c", rig.dist + radius * 0.3, rig.dist + radius * 2 + 16]}
+      />
 
       <SceneEnvironment />
       <CameraRig radius={radius} count={performers.length} />
@@ -48,9 +66,16 @@ export default function SceneCanvas({
         {reducedMotion ? (
           ring
         ) : (
+          /* Bug 2: NO `snap`. drei does
+             `animation.rotation = snap && !down ? rInitial : [y, x, 0]`, i.e.
+             `snap` springs the ring back to its initial rotation the instant the
+             pointer lifts. Without it the last dragged angle is kept as the
+             damped target, so the view stays exactly where the user left it.
+             `damping` still gives the eased feel, and polar/azimuth still fence
+             the ring in. The slow spin lives on an INNER group, so it keeps
+             composing on top of the user's persistent offset. */
           <PresentationControls
             global
-            snap
             polar={[-0.15, 0.35]}
             azimuth={[-0.5, 0.5]}
             damping={0.25}

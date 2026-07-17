@@ -1,41 +1,59 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { SkeletonUtils } from "three-stdlib";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useGLTF, useAnimations, Html } from "@react-three/drei";
+import { useGLTF, Html } from "@react-three/drei";
 import type { ScenePerformer } from "./ImmersiveScene";
 import { accentHex } from "./ImmersiveScene";
 
 /**
  * One evaluator robot. RobotExpressive is a SkinnedMesh, so each robot MUST
  * clone via SkeletonUtils (sharing the raw scene corrupts the skeleton). Every
- * clone gets its own `useAnimations` mixer, its "Main" material tinted to the
- * reviewer's voice color, an animation state machine driven by the performer's
- * status/score, and a drei `<Html>` chat bubble above its head that streams the
- * reviewer's `commentary`.
+ * clone owns its OWN `THREE.AnimationMixer` (see below — drei's `useAnimations`
+ * is NOT safe here), its "Main" material tinted to the reviewer's voice color,
+ * an animation state machine driven by the performer's status/score, and a drei
+ * `<Html>` chat bubble above its head that streams the reviewer's `commentary`.
  *
- * Deterministic per-index variation (never random) so re-renders are stable.
+ * Deterministic per-id variation (never random, never positional) so re-renders
+ * and neighbour add/remove are stable.
  */
 
-// pending → idle-ish waiting poses (chosen by index)
+// pending → idle-ish waiting poses (chosen by stable seed)
 const PENDING_POSES = ["Idle", "Standing", "Wave"] as const;
 // streaming → "arguing": loop through animated gestures, cycling over time
 const STREAM_CYCLE = ["Dance", "Wave", "Yes", "No", "Punch"] as const;
 
+/**
+ * FNV-1a over performer.id → a stable per-robot variation seed.
+ *
+ * Deliberately NOT the array index: indices shift when a reviewer is deleted
+ * from the middle of the list, which would re-run every surviving robot's
+ * animation effect and re-roll its pose/timeScale mid-performance.
+ */
+function seedOf(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
 export function Robot({
   performer,
-  index,
   count,
+  viewHeight,
   reducedMotion,
 }: {
   performer: ScenePerformer;
-  index: number;
   count: number;
+  /** Visible world height at the ring, from the camera rig (see RobotCircle). */
+  viewHeight: number;
   reducedMotion: boolean;
 }) {
-  const group = useRef<THREE.Group>(null);
   const { scene, animations } = useGLTF("/models/RobotExpressive.glb");
   const color = accentHex(performer.accentIndex);
+  const seed = useMemo(() => seedOf(performer.id), [performer.id]);
 
   // Independent skeleton per robot.
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
@@ -55,8 +73,75 @@ export function Robot({
     });
   }, [clone, color]);
 
-  const { actions } = useAnimations(animations, group);
+  /**
+   * ── Bug 3 core ──────────────────────────────────────────────────────────
+   * We own the mixer instead of using drei's `useAnimations(animations, group)`:
+   * drei binds actions lazily through a getter that returns `undefined` while
+   * `groupRef.current` is null. `play()` swallowed that (`if (!next) return`), so
+   * any transition evaluated before the ref attached was dropped FOREVER — a
+   * permanently dead state machine, no retry. Binding to `clone` (never null,
+   * unique per robot) kills that, and owning the mixer means nothing external
+   * ever stops our actions.
+   *
+   * ── THE IRON RULE: mixer, actions and bindings are ONE lifetime ──────────
+   * The mixer and its actions are built together in the effect below and dropped
+   * together in its cleanup. An action NEVER outlives the mixer that made it.
+   *
+   * This is not stylistic. The previous attempt memoized `{mixer, actions}` and
+   * called `mixer.uncacheRoot(clone)` on cleanup, betting that three's
+   * `_activateAction` "this action has been forgotten by the cache -> rebind"
+   * path made replaying a memoized action safe. That bet is FALSE and it is why
+   * adding a robot mid-stream threw `Cannot set properties of undefined
+   * (setting '_cacheIndex')`:
+   *
+   *   - `useMemo` is NOT invalidated by an effect cleanup, so a StrictMode
+   *     mount→cleanup→mount handed the SAME action objects back to a mixer whose
+   *     caches `uncacheRoot` had just emptied.
+   *   - `_removeInactiveAction` nulls `action._cacheIndex`, so the ACTION cache
+   *     really can resurrect itself. But `_removeInactiveBinding` does NOT null
+   *     `binding._cacheIndex` — a removed PropertyMixer keeps a stale index while
+   *     `mixer._bindings` is empty. So `_bindAction`'s `if (binding._cacheIndex
+   *     === null)` guard reads false, the binding is never re-added, and the very
+   *     next `_activateAction` → `_lendBinding` does `mixer._bindings[0]
+   *     ._cacheIndex = …` on an empty array → TypeError on undefined.
+   *
+   * So: the action cache tolerates reuse-after-uncache, the binding cache does
+   * not. We therefore never uncache and never reuse. A rebuilt mixer always gets
+   * brand-new `clipAction` objects; nothing else holds a reference to the old
+   * mixer, so it is plain garbage (bindings point at `clone`, never the reverse
+   * — no leak, no need for uncacheRoot).
+   */
+  interface Rig {
+    mixer: THREE.AnimationMixer;
+    actions: Record<string, THREE.AnimationAction>;
+  }
+  const rig = useRef<Rig | null>(null);
   const active = useRef<THREE.AnimationAction | null>(null);
+  // Bumped on every rig (re)build so the status effect below re-asserts the
+  // desired pose onto the FRESH actions instead of leaving the robot frozen.
+  const [rigId, setRigId] = useState(0);
+
+  useEffect(() => {
+    const mixer = new THREE.AnimationMixer(clone);
+    const actions: Record<string, THREE.AnimationAction> = {};
+    for (const clip of animations) actions[clip.name] = mixer.clipAction(clip, clone);
+    rig.current = { mixer, actions };
+    active.current = null;
+    setRigId((v) => v + 1);
+    return () => {
+      // Drop the rig FIRST: from here on `play()` and the frame loops read
+      // `rig.current === null` and no-op, so not a single call can land on an
+      // action of the mixer we are tearing down.
+      rig.current = null;
+      active.current = null;
+      // Safe: `_bindings` is fully intact here, so deactivation is reversible
+      // bookkeeping. It also restores the clone's bind pose for the next rig.
+      // Deliberately NO uncacheRoot — see above.
+      mixer.stopAllAction();
+    };
+  }, [clone, animations]);
+
+  useFrame((_, dt) => rig.current?.mixer.update(dt));
 
   // Crossfade helper (0.3s). Under reduced-motion: snap to a static pose frame.
   const play = useCallback(
@@ -64,7 +149,8 @@ export function Robot({
       name: string,
       opts?: { once?: boolean; timeScale?: number; phase?: number },
     ) => {
-      const next = actions[name];
+      // Always resolved from the LIVE rig — never a captured action object.
+      const next = rig.current?.actions[name];
       if (!next || active.current === next) return;
       const prev = active.current;
       next.reset();
@@ -87,7 +173,7 @@ export function Robot({
       }
       active.current = next;
     },
-    [actions, reducedMotion],
+    [reducedMotion],
   );
 
   // React to status/score changes → drive the state machine.
@@ -95,20 +181,21 @@ export function Robot({
   const streamTimer = useRef(0);
   const streamStep = useRef(0);
 
+  // Stable per-robot variation (phase offset / timeScale / gesture order).
+  const timeScale = 0.9 + (seed % 3) * 0.1;
+
   useEffect(() => {
     statusRef.current = performer.status;
     switch (performer.status) {
       case "pending":
-        play(PENDING_POSES[index % PENDING_POSES.length], {
-          phase: index * 0.5, // stagger idle phase
+        play(PENDING_POSES[seed % PENDING_POSES.length], {
+          phase: (seed % 8) * 0.25, // stagger idle phase
         });
         break;
       case "streaming":
         streamTimer.current = 0;
         streamStep.current = 0;
-        play(STREAM_CYCLE[index % STREAM_CYCLE.length], {
-          timeScale: 0.9 + (index % 3) * 0.1,
-        });
+        play(STREAM_CYCLE[seed % STREAM_CYCLE.length], { timeScale });
         break;
       case "done":
         play(
@@ -122,28 +209,37 @@ export function Robot({
         play("No", { once: true });
         break;
     }
-  }, [performer.status, performer.score, index, play]);
+    // `rigId` is in deps so that whenever the rig is rebuilt (clone change, or a
+    // StrictMode remount) the desired pose is re-asserted onto the FRESH actions
+    // rather than lost. `active` is nulled on every rebuild, so the identity
+    // early-return in `play()` can never swallow that re-assert.
+  }, [performer.status, performer.score, seed, timeScale, play, rigId]);
 
   // Streaming = "arguing": swap gestures every 2-4s, staggered per robot.
   useFrame((_, dt) => {
     if (statusRef.current !== "streaming" || reducedMotion) return;
     streamTimer.current += dt;
-    const interval = 2 + (index % 3); // 2s, 3s, 4s
+    const interval = 2 + (seed % 3); // 2s, 3s, 4s
     if (streamTimer.current >= interval) {
       streamTimer.current = 0;
       streamStep.current += 1;
-      const name = STREAM_CYCLE[(streamStep.current + index) % STREAM_CYCLE.length];
-      play(name, { timeScale: 0.9 + (index % 3) * 0.1 });
+      const name = STREAM_CYCLE[(streamStep.current + seed) % STREAM_CYCLE.length];
+      play(name, { timeScale });
     }
   });
 
   return (
-    <group ref={group}>
+    <group>
       {/* feet dropped onto the ContactShadows plane at y=-1; scaled around the
           clone origin (feet), so a slightly smaller robot stays grounded and
           gains a little more whitespace between neighbours. */}
       <primitive object={clone} position={[0, -1, 0]} scale={0.9} />
-      <RobotBubble performer={performer} color={color} count={count} />
+      <RobotBubble
+        performer={performer}
+        color={color}
+        count={count}
+        viewHeight={viewHeight}
+      />
     </group>
   );
 }
@@ -166,10 +262,12 @@ function RobotBubble({
   performer,
   color,
   count,
+  viewHeight,
 }: {
   performer: ScenePerformer;
   color: string;
   count: number;
+  viewHeight: number;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -214,7 +312,15 @@ function RobotBubble({
   const width = many ? 186 : 220;
   const bodyFont = many ? 11.5 : 12.5;
   const bodyMaxH = many ? 96 : 118;
-  const distanceFactor = 6 + (6 - Math.min(count, 6)) * 0.6; // fewer → larger
+  /**
+   * drei `<Html distanceFactor>` renders at `factor / visibleWorldHeight` of the
+   * viewport, so a hard-coded factor silently shrinks the text whenever the
+   * camera pulls back or narrows its lens (as the Bug 1 rig does). Derive it
+   * from the actual rig instead: bubbles then keep a CONSTANT on-screen size no
+   * matter how the framing is retuned. The `count` term keeps the original
+   * "fewer reviewers → roomier bubbles" taper.
+   */
+  const distanceFactor = viewHeight * (0.86 - Math.min(count, 6) * 0.073);
 
   return (
     <group ref={holderRef} position={[0, 2.1, 0]}>
